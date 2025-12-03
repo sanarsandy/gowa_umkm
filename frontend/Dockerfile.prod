@@ -16,8 +16,13 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 
+# Copy the entire .output directory
 COPY --from=builder /app/.output ./
-RUN mkdir -p /app/server/chunks && ln -s /app/public /app/server/chunks/public
+
+# Create symlink for public assets
+RUN mkdir -p /app/server/chunks && \
+    ln -sf /app/public /app/server/chunks/public && \
+    chmod -R 755 /app/public
 
 ENV NODE_ENV=production
 ENV NITRO_HOST=0.0.0.0
@@ -26,5 +31,4 @@ ENV NITRO_PRESET=node-server
 
 EXPOSE 3000
 
-WORKDIR /app
 CMD ["node", "server/index.mjs"]
