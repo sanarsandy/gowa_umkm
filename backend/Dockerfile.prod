@@ -1,0 +1,28 @@
+FROM golang:alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies including git (required for go mod tidy with whatsmeow)
+RUN apk add --no-cache gcc musl-dev sqlite-dev git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Build with CGO enabled for SQLite support
+RUN CGO_ENABLED=1 go build -v -o main .
+
+FROM alpine:latest
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates sqlite-libs
+
+# Copy binary from builder
+COPY --from=builder /app/main .
+
+EXPOSE 8080
+
+CMD ["./main"]

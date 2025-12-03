@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: gowa-db
+    environment:
+      POSTGRES_USER: gowa_user
+      POSTGRES_PASSWORD: gowa_password
+      POSTGRES_DB: gowa_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - gowa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gowa_user -d gowa_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: gowa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gowa-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: gowa-api
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      DB_USER: gowa_user
+      DB_PASSWORD: gowa_password
+      DB_NAME: gowa_db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:8080/api/auth/google/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-secret}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gowa-network
+    volumes:
+      # WhatsApp session persistence
+      - whatsapp_stores:/app/data/whatsapp_stores
+
+  app:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: gowa-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NUXT_PUBLIC_API_BASE=http://localhost:8080
+    depends_on:
+      - api
+    networks:
+      - gowa-network
+
+networks:
+  gowa-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  whatsapp_stores:
+
