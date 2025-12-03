@@ -80,20 +80,16 @@ func main() {
 
 	// Wait for interrupt signal
 	<-quit
-	e.Logger.Info("Shutting down server...")
-
-	// Stop scheduler
-	broadcastScheduler.Stop()
+	log.Println("Shutting down server...")
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	if err := e.Shutdown(ctx); err != nil {
 		e.Logger.Fatal(err)
 	}
 
-	e.Logger.Info("Server stopped gracefully")
+	log.Println("Server stopped gracefully")
 }
 
 func EchoServer() *echo.Echo {
