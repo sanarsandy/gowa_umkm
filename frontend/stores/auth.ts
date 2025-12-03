@@ -43,14 +43,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     function logout() {
-        // Clear cookies by setting maxAge to 0
+        // Clear cookies by setting to null
         token.value = null
         user.value = null
 
-        // Force remove cookies
+        // Force remove cookies with matching attributes
         if (process.client) {
-            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
-            document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+            const cookieOptions = `path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${isSecure ? '; Secure' : ''}`
+            document.cookie = `token=; ${cookieOptions}`
+            document.cookie = `user=; ${cookieOptions}`
         }
     }
 
