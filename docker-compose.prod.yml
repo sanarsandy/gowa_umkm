@@ -15,7 +15,7 @@ services:
     networks:
       - gowa-network
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gowa_user} -d ${DB_NAME:-gowa_db}"]
       interval: 5s
@@ -45,7 +45,7 @@ services:
     container_name: gowa-api-prod
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8085:8080"
+      - "127.0.0.1:8087:8080"
     environment:
       DB_HOST: ${DB_HOST:-db}
       DB_USER: ${DB_USER:-gowa_user}
@@ -82,7 +82,7 @@ services:
     container_name: gowa-app-prod
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3002:3000"
     environment:
       NODE_ENV: production
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-http://localhost:8080}
