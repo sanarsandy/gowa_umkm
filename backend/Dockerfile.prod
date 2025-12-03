@@ -20,9 +20,14 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates sqlite-libs
 
-# Copy binary from builder
+# Copy the built binary
 COPY --from=builder /app/main .
 
+# Copy migrations folder
+COPY --from=builder /app/migrations ./migrations
+
+# Expose port
 EXPOSE 8080
 
+# Run the binary
 CMD ["./main"]
