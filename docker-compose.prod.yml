@@ -1,35 +1,37 @@
+version: '3.8'
+
 services:
   db:
     image: postgres:15-alpine
-    container_name: {{PROJECT_NAME}}-db-prod
+    container_name: gowa-db-prod
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-{{PROJECT_NAME}}_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-{{PROJECT_NAME}}_password}
-      POSTGRES_DB: ${DB_NAME:-{{PROJECT_NAME}}_db}
+      POSTGRES_USER: ${DB_USER:-gowa_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-gowa_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
     networks:
-      - {{PROJECT_NAME}}-network
+      - gowa-network
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-{{PROJECT_NAME}}_user} -d ${DB_NAME:-{{PROJECT_NAME}}_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gowa_user} -d ${DB_NAME:-gowa_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: {{PROJECT_NAME}}-redis-prod
+    container_name: gowa-redis-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - {{PROJECT_NAME}}-network
+      - gowa-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -40,15 +42,15 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    container_name: {{PROJECT_NAME}}-api-prod
+    container_name: gowa-api-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:8085:8080"
     environment:
       DB_HOST: ${DB_HOST:-db}
-      DB_USER: ${DB_USER:-{{PROJECT_NAME}}_user}
-      DB_PASSWORD: ${DB_PASSWORD:-{{PROJECT_NAME}}_password}
-      DB_NAME: ${DB_NAME:-{{PROJECT_NAME}}_db}
+      DB_USER: ${DB_USER:-gowa_user}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-gowa_db}
       DB_PORT: ${DB_PORT:-5432}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
@@ -68,7 +70,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - {{PROJECT_NAME}}-network
+      - gowa-network
     volumes:
       # WhatsApp session persistence
       - whatsapp_stores:/app/data/whatsapp_stores
@@ -77,7 +79,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
-    container_name: {{PROJECT_NAME}}-app-prod
+    container_name: gowa-app-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -88,10 +90,10 @@ services:
     depends_on:
       - api
     networks:
-      - {{PROJECT_NAME}}-network
+      - gowa-network
 
 networks:
-  {{PROJECT_NAME}}-network:
+  gowa-network:
     driver: bridge
 
 volumes:
@@ -101,4 +103,3 @@ volumes:
     driver: local
   whatsapp_stores:
     driver: local
-
