@@ -1,8 +1,9 @@
 -- Migration 009: AI Knowledge Base & Conversation Logs
 -- Stores knowledge base for AI auto-reply and conversation logs
 
+-- NOTE: Vector extension disabled - using simplified version in migration 019
 -- Enable pgvector extension for vector similarity search
-CREATE EXTENSION IF NOT EXISTS vector;
+-- CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Knowledge Base table
 CREATE TABLE IF NOT EXISTS knowledge_base (
@@ -20,7 +21,7 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     priority INTEGER DEFAULT 5 CHECK (priority BETWEEN 1 AND 10), -- 1=low, 10=high
     
     -- Vector embedding for semantic search (OpenAI embedding dimension)
-    embedding vector(1536),
+    -- embedding vector(1536),  -- DISABLED: requires pgvector extension
     
     -- Usage tracking
     usage_count INTEGER DEFAULT 0,
@@ -105,7 +106,7 @@ CREATE INDEX idx_knowledge_base_is_active ON knowledge_base(is_active) WHERE is_
 CREATE INDEX idx_knowledge_base_keywords ON knowledge_base USING GIN(keywords);
 CREATE INDEX idx_knowledge_base_tags ON knowledge_base USING GIN(tags);
 -- Vector similarity search index (IVFFlat for faster approximate search)
-CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+-- CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);  -- DISABLED: requires pgvector
 
 -- Indexes for ai_conversation_logs
 CREATE INDEX idx_ai_logs_tenant_id ON ai_conversation_logs(tenant_id);
@@ -124,7 +125,7 @@ COMMENT ON TABLE knowledge_base IS 'Knowledge base for AI auto-reply system';
 COMMENT ON TABLE ai_conversation_logs IS 'Logs of all AI-powered conversations';
 COMMENT ON TABLE prompt_templates IS 'Reusable prompt templates for AI responses';
 
-COMMENT ON COLUMN knowledge_base.embedding IS 'Vector embedding for semantic similarity search';
+-- COMMENT ON COLUMN knowledge_base.embedding IS 'Vector embedding for semantic similarity search';  -- DISABLED
 COMMENT ON COLUMN knowledge_base.priority IS 'Priority for ranking search results (1-10)';
 COMMENT ON COLUMN ai_conversation_logs.confidence_score IS 'AI confidence in the response (0.0-1.0)';
 COMMENT ON COLUMN ai_conversation_logs.knowledge_used IS 'Array of knowledge base entry IDs used to generate response';
