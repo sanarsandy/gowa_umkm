@@ -47,11 +47,24 @@ export const useAuthStore = defineStore('auth', () => {
         token.value = null
         user.value = null
 
-        // Force remove cookies with matching attributes
+        // Force remove cookies with all possible variations
         if (process.client) {
+            // Clear with matching attributes
             const cookieOptions = `path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${isSecure ? '; Secure' : ''}`
             document.cookie = `token=; ${cookieOptions}`
             document.cookie = `user=; ${cookieOptions}`
+
+            // Also try without SameSite (for older browsers)
+            document.cookie = `token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
+            document.cookie = `user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
+
+            // Clear without Secure flag as fallback
+            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
+            document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
+
+            // Clear Pinia state from localStorage
+            localStorage.removeItem('auth')
+            localStorage.removeItem('pinia')
         }
     }
 

@@ -174,13 +174,12 @@ const userInitials = computed(() => {
 
 const logout = async () => {
   authStore.logout()
-  // Wait a bit to ensure state is cleared
-  await nextTick()
-  // Use reload to ensure fresh state
-  await navigateTo('/login', { replace: true, external: false })
-  // Force reload if still on dashboard
-  if (process.client && window.location.pathname.startsWith('/dashboard')) {
+  
+  // Force reload to clear all state
+  if (process.client) {
     window.location.href = '/login'
+  } else {
+    await navigateTo('/login', { replace: true })
   }
 }
 </script>
