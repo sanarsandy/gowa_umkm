@@ -13,15 +13,26 @@ RUN npm run postinstall || true
 FROM base AS builder
 RUN npm run build
 
+# Verify build output
+RUN echo "=== Build Output Structure ===" && \
+    ls -la /app/.output/ && \
+    echo "=== Public Directory ===" && \
+    ls -la /app/.output/public/ && \
+    echo "=== Nuxt Assets ===" && \
+    ls -la /app/.output/public/_nuxt/ || echo "Warning: _nuxt directory not found"
+
 FROM node:22-alpine
 WORKDIR /app
 
-# Copy the entire .output directory
+# Copy the entire .output directory from builder
+# Nuxt 3 with node-server preset serves static files from .output/public/ automatically
 COPY --from=builder /app/.output ./
 
-# Create symlink for public assets
-RUN mkdir -p /app/server/chunks && \
-    ln -sf /app/public /app/server/chunks/public && \
+# Verify static assets are present
+RUN echo "=== Verifying Static Assets in Final Image ===" && \
+    ls -la /app/public/_nuxt/ && \
+    echo "=== Total JS files ===" && \
+    find /app/public/_nuxt/ -name "*.js" | wc -l && \
     chmod -R 755 /app/public
 
 ENV NODE_ENV=production
@@ -31,4 +42,5 @@ ENV NITRO_PRESET=node-server
 
 EXPOSE 3000
 
+WORKDIR /app
 CMD ["node", "server/index.mjs"]

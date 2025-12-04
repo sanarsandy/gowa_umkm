@@ -3,6 +3,21 @@
 # Then create symlink: sudo ln -s /etc/nginx/sites-available/{{PROJECT_NAME}} /etc/nginx/sites-enabled/
 # Test: sudo nginx -t
 # Reload: sudo systemctl reload nginx
+#
+# IMPORTANT PORT MAPPING:
+# - Frontend app port mapping: 127.0.0.1:3002:3000 (from docker-compose.prod.yml)
+# - API port mapping: 127.0.0.1:8087:8080 (check docker-compose.prod.yml)
+# - Make sure proxy_pass ports match the HOST ports (3002 and 8087)
+#
+# Note: Cloudflare Insights script is automatically injected by Cloudflare
+# If you see ERR_BLOCKED_BY_CLIENT for beacon.min.js, it's normal - it's blocked by 
+# browser tracking prevention or ad blockers. This is not a critical error.
+
+# WebSocket upgrade map
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
 
 server {
     listen 80;
@@ -11,9 +26,35 @@ server {
     # Redirect HTTP to HTTPS (uncomment after SSL setup)
     # return 301 https://$server_name$request_uri;
 
-    # For initial setup, proxy to Nuxt app
+    # Static assets from Nuxt (_nuxt directory)
+    # These are immutable, cache aggressively
+    location /_nuxt/ {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Aggressive caching for immutable assets
+        proxy_cache_valid 200 365d;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        
+        # Error handling
+        proxy_intercept_errors on;
+        error_page 502 503 504 = @nuxt_fallback;
+    }
+    
+    # Fallback for Nuxt errors
+    location @nuxt_fallback {
+        return 503 "Nuxt service temporarily unavailable";
+        add_header Content-Type text/plain;
+    }
+    
+    # Proxy all other requests to Nuxt app
+    # IMPORTANT: Match the port mapping from docker-compose.prod.yml (3002:3000)
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -29,14 +70,24 @@ server {
         proxy_read_timeout 60s;
     }
 
-    # API endpoints (if you want to expose API directly)
+    # API endpoints (including WebSocket support)
+    # IMPORTANT: Match the port mapping from docker-compose.prod.yml (8087:8080)
     location /api/ {
-        proxy_pass http://127.0.0.1:8085;
+        proxy_pass http://127.0.0.1:8087;
         proxy_http_version 1.1;
+        
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket timeouts
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
         
         # CORS headers (if needed)
         add_header 'Access-Control-Allow-Origin' '$http_origin' always;
@@ -46,13 +97,6 @@ server {
         if ($request_method = 'OPTIONS') {
             return 204;
         }
-    }
-
-    # Static files caching
-    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
-        proxy_pass http://127.0.0.1:3000;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
     }
 
     # Security headers
@@ -81,7 +125,7 @@ server {
 #
 #     # Same location blocks as above
 #     location / {
-#         proxy_pass http://127.0.0.1:3000;
+#         proxy_pass http://127.0.0.1:3002;  # Match port from docker-compose.prod.yml
 #         # ... (same as above)
 #     }
 # }
