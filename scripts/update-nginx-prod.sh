@@ -14,8 +14,8 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-NGINX_SITE_CONFIG="/etc/nginx/sites-available/app2.anakhebat.web.id"
-NGINX_SITE_ENABLED="/etc/nginx/sites-enabled/app2.anakhebat.web.id"
+NGINX_SITE_CONFIG="/etc/nginx/sites-available/app2.anakhebat"
+NGINX_SITE_ENABLED="/etc/nginx/sites-enabled/app2.anakhebat"
 
 # Backup current configuration
 echo "📦 Backing up current configuration..."
