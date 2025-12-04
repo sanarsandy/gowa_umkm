@@ -28,9 +28,7 @@ export default defineNuxtConfig({
     }
   },
   nitro: {
-    preset: 'node-server',
-    compressPublicAssets: true,
-    minify: true
+    preset: 'node-server'
   },
   vite: {
     server: {
