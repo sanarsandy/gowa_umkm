@@ -29,21 +29,8 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'node-server',
-    // Ensure proper handling of static assets
     compressPublicAssets: true,
-    minify: true,
-    // Serve static assets from public directory
-    publicAssets: [
-      {
-        baseURL: '/',
-        dir: 'public',
-        maxAge: 31536000 // 1 year for immutable assets
-      }
-    ],
-    // Enable WebSocket support
-    experimental: {
-      websocket: true
-    }
+    minify: true
   },
   vite: {
     server: {
