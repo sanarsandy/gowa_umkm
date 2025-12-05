@@ -207,7 +207,7 @@ const handleLogin = async (e?: Event) => {
     // Check for network errors
     const errorMsg = err?.message || err?.toString() || ''
     if (errorMsg.includes('fetch') || errorMsg.includes('network') || errorMsg.includes('Failed to fetch') || errorMsg.includes('ERR_') || errorMsg.includes('ECONNREFUSED')) {
-      errorMessage = 'Tidak dapat terhubung ke server. Pastikan backend sedang berjalan di http://localhost:8080'
+      errorMessage = 'Tidak dapat terhubung ke server. Silakan coba lagi nanti.'
     }
     
     // Check for CORS errors

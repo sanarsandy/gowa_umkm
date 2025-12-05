@@ -3,10 +3,10 @@ export const useApi = () => {
     const authStore = useAuthStore()
 
     // Get base URL and ensure it doesn't have trailing slash
-    let baseUrl = process.server 
-        ? config.apiInternal 
+    let baseUrl = process.server
+        ? config.apiInternal
         : config.public.apiBase
-    
+
     // Normalize URL: remove trailing slash and ensure it's just the base URL
     if (baseUrl) {
         baseUrl = baseUrl.replace(/\/+$/, '') // Remove trailing slashes
@@ -17,9 +17,9 @@ export const useApi = () => {
             baseUrl = urlMatch[1]
         }
     }
-    
+
     const apiUrl = baseUrl
-    
+
     if (process.client) {
         console.log('[DEBUG] useApi - apiUrl:', apiUrl)
         console.log('[DEBUG] useApi - config.public.apiBase:', config.public.apiBase)
@@ -30,7 +30,7 @@ export const useApi = () => {
         options: RequestInit = {}
     ): Promise<T> => {
         const url = `${apiUrl}${endpoint}`
-        
+
         if (process.client) {
             console.log('API Request:', {
                 url,
@@ -38,7 +38,7 @@ export const useApi = () => {
                 endpoint
             })
         }
-        
+
         const headers: HeadersInit = {
             'Content-Type': 'application/json',
             ...options.headers,
@@ -59,9 +59,9 @@ export const useApi = () => {
         }
 
         try {
-        const response = await $fetch<T>(url, {
-            ...options,
-            headers,
+            const response = await $fetch<T>(url, {
+                ...options,
+                headers,
                 onResponseError({ response }) {
                     // This will be called on error responses
                     console.error('Response Error:', {
@@ -79,15 +79,15 @@ export const useApi = () => {
                     })
                 }
             })
-            
+
             if (process.client) {
                 console.log('API Response:', {
                     url,
                     success: true
-        })
+                })
             }
 
-        return response
+            return response
         } catch (error: any) {
             // Log error for debugging
             if (process.client) {
@@ -116,7 +116,7 @@ export const useApi = () => {
                     }
                 }
             }
-            
+
             // Handle error response - check multiple possible error formats
             // Nuxt $fetch error format - check error.data first
             if (error.data) {
@@ -133,7 +133,7 @@ export const useApi = () => {
                     throw error
                 }
             }
-            
+
             // Check if error has response data (Nuxt 3 format)
             if (error.response?._data) {
                 const responseData = error.response._data
@@ -157,19 +157,19 @@ export const useApi = () => {
                     }
                 }
             }
-            
+
             // Check if error is a FetchError or network error
             const errorMsg = error.message || error.toString() || ''
             if (errorMsg.includes('fetch') || errorMsg.includes('network') || errorMsg.includes('Failed to fetch') || errorMsg.includes('ERR_') || errorMsg.includes('ECONNREFUSED')) {
                 throw {
                     data: {
-                        error: 'Tidak dapat terhubung ke server. Pastikan backend sedang berjalan di http://localhost:8080'
+                        error: 'Tidak dapat terhubung ke server. Silakan coba lagi nanti.'
                     },
                     statusCode: 0,
                     message: errorMsg
                 }
             }
-            
+
             // If error doesn't have data, wrap it with proper message
             const errorMessage = error.message || error.statusMessage || error.toString() || 'Terjadi kesalahan'
             throw {

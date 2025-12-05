@@ -180,14 +180,31 @@ const logout = async () => {
   
   console.log('[Dashboard] Auth cleared, redirecting...')
   
-  // Force full page navigation to clear all state
-  // Use external: true to ensure full page reload
+  // Force complete app reload to clear all Nuxt state
+  // This is necessary because useCookie doesn't reactively update
+  // after direct cookie manipulation in production HTTPS
   if (process.client) {
-    // Use setTimeout to ensure state is fully cleared
-    setTimeout(() => {
-      // Force hard redirect
-      window.location.href = '/login'
-    }, 200)
+    // Clear all cookies again via document.cookie with proper attributes
+    const domain = window.location.hostname
+    const isSecure = window.location.protocol === 'https:'
+    
+    // Force delete cookies with exact attributes
+    const deleteOpts = `; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+    document.cookie = `token=${deleteOpts}`
+    document.cookie = `user=${deleteOpts}`
+    
+    if (isSecure) {
+      document.cookie = `token=${deleteOpts}; Secure; SameSite=Lax`
+      document.cookie = `user=${deleteOpts}; Secure; SameSite=Lax`
+    }
+    
+    // Use reloadNuxtApp for full state reset, or fallback to hard redirect
+    try {
+      await reloadNuxtApp({ path: '/login', ttl: 1000 })
+    } catch (e) {
+      // Fallback: Force hard redirect
+      window.location.replace('/login')
+    }
   }
 }
 </script>

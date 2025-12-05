@@ -577,7 +577,9 @@ const clearChat = async () => {
   
   clearingChat.value = true
   const jid = customer.value.customer_jid
-  const url = `http://localhost:8080/api/whatsapp/messages/${encodeURIComponent(jid)}`
+  const config = useRuntimeConfig()
+  const apiBase = config.public.apiBase || 'http://localhost:8080'
+  const url = `${apiBase}/api/whatsapp/messages/${encodeURIComponent(jid)}`
   console.log('[Clear Chat] Clearing messages for:', jid)
   console.log('[Clear Chat] URL:', url)
   
