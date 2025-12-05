@@ -28,24 +28,41 @@ COPY --from=builder --chown=nuxtjs:nodejs /app/.output ./.output
 
 # CRITICAL FIX: Nitro dengan preset node-server mencari static files di
 # .output/server/chunks/public/_nuxt/ tapi file ada di .output/public/_nuxt/
-# Solusi: Buat symlink atau copy files ke lokasi yang dicari Nitro
+# Solusi: Copy semua files dari public ke server/chunks/public
+# Note: Harus dilakukan sebagai root sebelum switch ke nuxtjs user
 RUN if [ -d ".output/public" ] && [ -d ".output/server/chunks" ]; then \
+        echo "=== Starting static files copy ===" && \
         mkdir -p .output/server/chunks/public && \
+        echo "Source files count: $(find .output/public/_nuxt -type f 2>/dev/null | wc -l)" && \
         if [ -d ".output/public/_nuxt" ]; then \
-            cp -r .output/public/_nuxt .output/server/chunks/public/ || \
-            ln -sf ../../../../public/_nuxt .output/server/chunks/public/_nuxt; \
+            echo "Copying _nuxt directory (recursive)..." && \
+            cp -rv .output/public/_nuxt .output/server/chunks/public/ && \
+            echo "Verifying copy..." && \
+            DEST_COUNT=$(find .output/server/chunks/public/_nuxt -type f 2>/dev/null | wc -l) && \
+            SRC_COUNT=$(find .output/public/_nuxt -type f 2>/dev/null | wc -l) && \
+            echo "Source files: $SRC_COUNT, Destination files: $DEST_COUNT" && \
+            if [ "$SRC_COUNT" -eq "$DEST_COUNT" ]; then \
+                echo "✓ Copy successful: $DEST_COUNT files copied"; \
+            else \
+                echo "✗ Copy incomplete: Expected $SRC_COUNT, got $DEST_COUNT"; \
+                exit 1; \
+            fi; \
+        else \
+            echo "✗ Error: .output/public/_nuxt does not exist"; \
+            exit 1; \
         fi && \
         if [ -d ".output/public/builds" ]; then \
-            cp -r .output/public/builds .output/server/chunks/public/ || \
-            ln -sf ../../../../public/builds .output/server/chunks/public/builds; \
-        fi; \
+            echo "Copying builds directory..." && \
+            cp -rv .output/public/builds .output/server/chunks/public/ && \
+            echo "✓ Builds directory copied"; \
+        fi && \
+        echo "Setting permissions..." && \
+        chown -R nuxtjs:nodejs .output/server/chunks/public && \
+        echo "=== Copy completed ==="; \
+    else \
+        echo "✗ Error: Required directories not found"; \
+        exit 1; \
     fi
-
-# Verify static files exist (for debugging)
-RUN echo "=== Checking .output/public/_nuxt ===" && \
-    ls -la .output/public/_nuxt/ 2>/dev/null | head -5 || echo "Warning: _nuxt not in public" && \
-    echo "=== Checking .output/server/chunks/public/_nuxt ===" && \
-    ls -la .output/server/chunks/public/_nuxt/ 2>/dev/null | head -5 || echo "Warning: _nuxt not in server/chunks/public"
 
 USER nuxtjs
 EXPOSE 3000
