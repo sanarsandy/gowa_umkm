@@ -173,13 +173,21 @@ const userInitials = computed(() => {
 })
 
 const logout = async () => {
+  console.log('[Dashboard] Logout clicked')
+  
   // Clear auth and wait for it to complete
   await authStore.logout()
   
-  // Redirect after cookies are cleared
-  // Use replace to prevent back button issues
+  console.log('[Dashboard] Auth cleared, redirecting...')
+  
+  // Force full page navigation to clear all state
+  // Use external: true to ensure full page reload
   if (process.client) {
-    window.location.replace('/login')
+    // Use setTimeout to ensure state is fully cleared
+    setTimeout(() => {
+      // Force hard redirect
+      window.location.href = '/login'
+    }, 200)
   }
 }
 </script>
