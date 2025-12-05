@@ -50,17 +50,42 @@ echo ""
 
 # Step 2: Extract static files
 echo -e "${BLUE}[2/5]${NC} Extracting static files from container..."
-if [ -f "$PROJECT_DIR/scripts/extract-static-files.sh" ]; then
-    chmod +x "$PROJECT_DIR/scripts/extract-static-files.sh"
-    STATIC_ROOT="$STATIC_ROOT" "$PROJECT_DIR/scripts/extract-static-files.sh"
+echo "Creating static root directory: $STATIC_ROOT"
+$SUDO mkdir -p "$STATIC_ROOT"
+$SUDO chown -R $USER:$USER "$STATIC_ROOT"
+
+# Wait for container to be ready
+echo "Waiting for container to be ready..."
+sleep 5
+
+# Extract _nuxt directory
+echo "Extracting _nuxt directory..."
+if docker cp gowa-app-prod:/app/.output/public/_nuxt "$STATIC_ROOT/" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} _nuxt directory extracted"
 else
-    echo -e "${YELLOW}⚠${NC} extract-static-files.sh not found, creating manually..."
-    $SUDO mkdir -p "$STATIC_ROOT"
-    docker cp gowa-app-prod:/app/.output/public/_nuxt "$STATIC_ROOT/" 2>/dev/null || true
-    docker cp gowa-app-prod:/app/.output/public/builds "$STATIC_ROOT/" 2>/dev/null || true
-    $SUDO chown -R www-data:www-data "$STATIC_ROOT"
-    $SUDO chmod -R 755 "$STATIC_ROOT"
+    echo -e "${RED}✗${NC} Failed to extract _nuxt directory"
+    echo "Checking container..."
+    docker exec gowa-app-prod ls -la /app/.output/public/ 2>/dev/null || echo "Container not accessible"
+    exit 1
 fi
+
+# Extract builds directory if exists
+if docker exec gowa-app-prod test -d "/app/.output/public/builds" 2>/dev/null; then
+    echo "Extracting builds directory..."
+    docker cp gowa-app-prod:/app/.output/public/builds "$STATIC_ROOT/" 2>/dev/null && \
+    echo -e "${GREEN}✓${NC} builds directory extracted" || \
+    echo -e "${YELLOW}⚠${NC} builds directory extraction failed (optional)"
+fi
+
+# Extract other files from public root
+echo "Extracting other public files..."
+docker exec gowa-app-prod find /app/.output/public -maxdepth 1 -type f -exec sh -c 'docker cp gowa-app-prod:$1 /tmp/ 2>/dev/null && sudo mv /tmp/$(basename $1) {{STATIC_ROOT}}/ 2>/dev/null || true' _ {} \; 2>/dev/null || true
+
+# Set permissions
+echo "Setting permissions..."
+$SUDO chown -R www-data:www-data "$STATIC_ROOT"
+$SUDO chmod -R 755 "$STATIC_ROOT"
+echo -e "${GREEN}✓${NC} Static files extracted and permissions set"
 echo ""
 
 # Step 3: Verify static files
