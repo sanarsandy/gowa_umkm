@@ -337,3 +337,35 @@ func getMapKeys(m map[string]interface{}) []string {
 	return keys
 }
 
+// Logout clears authentication cookies
+func Logout(c echo.Context) error {
+	isProduction := os.Getenv("ENV") == "production"
+
+	// Clear token cookie (HttpOnly, so must be cleared server-side)
+	tokenCookie := new(http.Cookie)
+	tokenCookie.Name = "token"
+	tokenCookie.Value = ""
+	tokenCookie.Path = "/"
+	tokenCookie.MaxAge = -1 // Delete immediately
+	tokenCookie.HttpOnly = true
+	tokenCookie.Secure = isProduction
+	tokenCookie.SameSite = http.SameSiteLaxMode
+	c.SetCookie(tokenCookie)
+
+	// Clear user cookie
+	userCookie := new(http.Cookie)
+	userCookie.Name = "user"
+	userCookie.Value = ""
+	userCookie.Path = "/"
+	userCookie.MaxAge = -1 // Delete immediately
+	userCookie.HttpOnly = false
+	userCookie.Secure = isProduction
+	userCookie.SameSite = http.SameSiteLaxMode
+	c.SetCookie(userCookie)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Logged out successfully",
+	})
+}
+

@@ -42,7 +42,23 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    function logout(): Promise<void> {
+    async function logout(): Promise<void> {
+        // Call backend to clear HttpOnly cookies first
+        if (process.client) {
+            try {
+                const config = useRuntimeConfig()
+                const apiBase = config.public.apiBase || 'http://localhost:8080'
+                await $fetch(`${apiBase}/api/auth/logout`, {
+                    method: 'POST',
+                    credentials: 'include' // Important: include cookies in request
+                })
+                console.log('[Auth] Backend logout API called successfully')
+            } catch (error) {
+                console.error('[Auth] Backend logout API call failed:', error)
+                // Continue with client-side cleanup even if backend fails
+            }
+        }
+
         // Clear cookies by setting to null
         token.value = null
         user.value = null
@@ -50,7 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
         return new Promise((resolve) => {
             // Force remove cookies with all possible variations
             if (process.client) {
-                console.log('[Auth] Logout: clearing cookies...')
+                console.log('[Auth] Logout: clearing cookies client-side...')
 
                 // Get current domain for cookie clearing
                 const domain = window.location.hostname

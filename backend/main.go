@@ -137,6 +137,7 @@ func EchoServer() *echo.Echo {
 	auth.Use(customMiddleware.AuthRateLimiterMiddleware())
 	auth.POST("/register", handlers.Register)
 	auth.POST("/login", handlers.Login)
+	auth.POST("/logout", handlers.Logout)
 	auth.GET("/google", handlers.GetGoogleAuthURL)
 	auth.GET("/google/callback", handlers.GoogleAuthCallback)
 
