@@ -42,30 +42,37 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    function logout() {
+    function logout(): Promise<void> {
         // Clear cookies by setting to null
         token.value = null
         user.value = null
 
-        // Force remove cookies with all possible variations
-        if (process.client) {
-            // Clear with matching attributes
-            const cookieOptions = `path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${isSecure ? '; Secure' : ''}`
-            document.cookie = `token=; ${cookieOptions}`
-            document.cookie = `user=; ${cookieOptions}`
+        return new Promise((resolve) => {
+            // Force remove cookies with all possible variations
+            if (process.client) {
+                // Clear with matching attributes
+                const cookieOptions = `path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${isSecure ? '; Secure' : ''}`
+                document.cookie = `token=; ${cookieOptions}`
+                document.cookie = `user=; ${cookieOptions}`
 
-            // Also try without SameSite (for older browsers)
-            document.cookie = `token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
-            document.cookie = `user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
+                // Also try without SameSite (for older browsers)
+                document.cookie = `token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
+                document.cookie = `user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
 
-            // Clear without Secure flag as fallback
-            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
-            document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
+                // Clear without Secure flag as fallback
+                document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
+                document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
 
-            // Clear Pinia state from localStorage
-            localStorage.removeItem('auth')
-            localStorage.removeItem('pinia')
-        }
+                // Clear Pinia state from localStorage
+                localStorage.removeItem('auth')
+                localStorage.removeItem('pinia')
+
+                // Small delay to ensure browser processes cookie removal
+                setTimeout(resolve, 100)
+            } else {
+                resolve()
+            }
+        })
     }
 
     return {

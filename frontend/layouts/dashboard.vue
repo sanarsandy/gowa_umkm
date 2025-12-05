@@ -173,13 +173,12 @@ const userInitials = computed(() => {
 })
 
 const logout = async () => {
-  // Clear auth immediately
-  authStore.logout()
+  // Clear auth and wait for it to complete
+  await authStore.logout()
   
-  // Immediate redirect using location.replace (no history entry, no back button)
-  // This prevents WebSocket from trying to reconnect
+  // Redirect after cookies are cleared
+  // Use replace to prevent back button issues
   if (process.client) {
-    // Use replace instead of href to prevent back button issues
     window.location.replace('/login')
   }
 }
