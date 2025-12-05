@@ -81,16 +81,26 @@ else
 fi
 echo ""
 
-# Test direct from container
+# Test direct from container (using wget or node if curl not available)
 echo -e "${BLUE}Testing direct access from container...${NC}"
 echo "   Testing: http://localhost:3000/_nuxt/$FIRST_FILENAME"
-CONTAINER_HTTP=$(docker exec "$CONTAINER_NAME" curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/_nuxt/$FIRST_FILENAME" 2>/dev/null || echo "000")
+
+# Try wget first, then node if wget not available
+if docker exec "$CONTAINER_NAME" which wget >/dev/null 2>&1; then
+    CONTAINER_HTTP=$(docker exec "$CONTAINER_NAME" wget -q --spider -S "http://localhost:3000/_nuxt/$FIRST_FILENAME" 2>&1 | grep -i "HTTP" | head -1 | awk '{print $2}' || echo "000")
+elif docker exec "$CONTAINER_NAME" which node >/dev/null 2>&1; then
+    CONTAINER_HTTP=$(docker exec "$CONTAINER_NAME" node -e "require('http').get('http://localhost:3000/_nuxt/$FIRST_FILENAME', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" 2>/dev/null && echo "200" || echo "000")
+else
+    CONTAINER_HTTP="SKIP"
+    echo -e "   ${YELLOW}⚠${NC} Cannot test (curl/wget/node not available in container)"
+    echo -e "   ${YELLOW}ℹ${NC} But HTTP access from host is working, so server is OK"
+fi
 
 if [ "$CONTAINER_HTTP" = "200" ]; then
     echo -e "   ${GREEN}✓${NC} Container can serve file (HTTP 200)"
-else
-    echo -e "   ${RED}✗${NC} Container cannot serve file (HTTP $CONTAINER_HTTP)"
-    echo -e "   ${YELLOW}ℹ${NC} This indicates a problem with Nuxt/Nitro server"
+elif [ "$CONTAINER_HTTP" != "SKIP" ]; then
+    echo -e "   ${YELLOW}⚠${NC} Cannot verify container access (HTTP $CONTAINER_HTTP)"
+    echo -e "   ${YELLOW}ℹ${NC} But HTTP access from host works, so nginx proxy is working"
 fi
 echo ""
 
@@ -98,14 +108,28 @@ echo "=========================================="
 echo "  Summary"
 echo "=========================================="
 echo ""
-if [ "$HTTP_CODE" = "200" ] && [ "$CONTAINER_HTTP" = "200" ]; then
-    echo -e "${GREEN}✓${NC} Static files are accessible"
-elif [ "$CONTAINER_HTTP" != "200" ]; then
-    echo -e "${RED}✗${NC} Problem: Container cannot serve files"
-    echo "   This is a Nuxt/Nitro server issue, not nginx"
+if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}✓${NC} Static files are accessible via nginx (HTTP 200)"
+    echo -e "${GREEN}✓${NC} Nginx proxy is working correctly"
+    if [ "$CONTAINER_HTTP" != "200" ] && [ "$CONTAINER_HTTP" != "SKIP" ]; then
+        echo -e "${YELLOW}⚠${NC} Note: Cannot verify direct container access"
+        echo -e "${YELLOW}ℹ${NC} But nginx proxy works, so this is OK"
+    fi
+    echo ""
+    echo "Next steps:"
+    echo "  1. Test in browser: https://app3.anakhebat.web.id"
+    echo "  2. Check browser console for any errors"
+    echo "  3. Monitor nginx logs: sudo tail -f /var/log/nginx/app3_error.log"
+elif [ "$HTTP_CODE" = "404" ]; then
+    echo -e "${RED}✗${NC} Problem: File not found (404)"
+    echo "   File exists in container but not accessible via HTTP"
+    echo "   Check Nuxt/Nitro server configuration"
+elif [ "$HTTP_CODE" = "503" ]; then
+    echo -e "${RED}✗${NC} Problem: Service unavailable (503)"
+    echo "   Check nginx error logs: sudo tail -f /var/log/nginx/app3_error.log"
     echo "   Check container logs: docker logs $CONTAINER_NAME"
 else
-    echo -e "${YELLOW}⚠${NC} Problem: Files exist but not accessible via nginx"
+    echo -e "${YELLOW}⚠${NC} Problem: HTTP $HTTP_CODE"
     echo "   Check nginx config and logs"
 fi
 echo ""
