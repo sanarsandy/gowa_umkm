@@ -95,7 +95,6 @@ server {
 
         # Keep connection alive
         proxy_set_header Connection "";
-        proxy_http_version 1.1;
 
         # Error handling dengan retry
         proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
