@@ -2,8 +2,12 @@ package workers
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -94,7 +98,10 @@ func (w *MessageWorker) processBroadcastMessages(ctx context.Context) {
 // AIConfig holds the AI configuration for a tenant
 type AIConfig struct {
 	Enabled             bool    `db:"enabled"`
+	AIProvider          string  `db:"ai_provider"`
 	Model               string  `db:"model"`
+	UseSystemKey        bool    `db:"use_system_key"`
+	UserAPIKey          string  // Decrypted API key (not from DB directly)
 	ConfidenceThreshold float64 `db:"confidence_threshold"`
 	MaxTokens           int     `db:"max_tokens"`
 	SystemPrompt        string  `db:"system_prompt"`
@@ -111,10 +118,15 @@ type AIConfig struct {
 // getAIConfig loads AI configuration for a tenant
 func (w *MessageWorker) getAIConfig(ctx context.Context, tenantID string) (*AIConfig, error) {
 	var config AIConfig
+	var encryptedAPIKey sql.NullString
+	
 	query := `
 		SELECT 
 			COALESCE(enabled, false) as enabled,
+			COALESCE(ai_provider, 'gemini') as ai_provider,
 			COALESCE(model, 'gemini-1.5-flash') as model,
+			COALESCE(use_system_key, true) as use_system_key,
+			user_api_key,
 			COALESCE(confidence_threshold, 0.80) as confidence_threshold,
 			COALESCE(max_tokens, 200) as max_tokens,
 			COALESCE(system_prompt, '') as system_prompt,
@@ -130,18 +142,50 @@ func (w *MessageWorker) getAIConfig(ctx context.Context, tenantID string) (*AICo
 		WHERE tenant_id = $1
 	`
 	
-	err := w.db.GetContext(ctx, &config, query, tenantID)
+	row := w.db.QueryRowContext(ctx, query, tenantID)
+	err := row.Scan(
+		&config.Enabled,
+		&config.AIProvider,
+		&config.Model,
+		&config.UseSystemKey,
+		&encryptedAPIKey,
+		&config.ConfidenceThreshold,
+		&config.MaxTokens,
+		&config.SystemPrompt,
+		&config.BusinessName,
+		&config.BusinessType,
+		&config.BusinessHours,
+		&config.BusinessDescription,
+		&config.BusinessAddress,
+		&config.PaymentMethods,
+		&config.EscalateComplaint,
+		&config.EscalateOrder,
+	)
+	
 	if err == sql.ErrNoRows {
 		// Return default config
 		return &AIConfig{
 			Enabled:             false,
+			AIProvider:          "gemini",
 			Model:               "gemini-1.5-flash",
+			UseSystemKey:        true,
 			ConfidenceThreshold: 0.80,
 			MaxTokens:           200,
 		}, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	
+	// Decrypt user API key if exists and not using system key
+	if !config.UseSystemKey && encryptedAPIKey.Valid && encryptedAPIKey.String != "" {
+		decrypted, err := decryptAPIKeyWorker(encryptedAPIKey.String)
+		if err != nil {
+			fmt.Printf("[Worker] Warning: Failed to decrypt user API key: %v\n", err)
+		} else {
+			config.UserAPIKey = decrypted
+			fmt.Printf("[Worker] Using user's custom API key for tenant %s\n", tenantID)
+		}
 	}
 	
 	return &config, nil
@@ -325,6 +369,10 @@ Selalu gunakan bahasa yang santun dan profesional.`
 		SystemPrompt:    systemPrompt,
 		BusinessContext: businessContext,
 		KnowledgeBase:   knowledgeBase,
+		Provider:        config.AIProvider,
+		APIKey:          config.UserAPIKey, // Will be empty if using system key
+		Model:           config.Model,
+		MaxTokens:       config.MaxTokens,
 	}
 
 	response, err := w.aiService.GenerateAutoReply(ctx, aiReq)
@@ -527,4 +575,50 @@ func (w *MessageWorker) updateCustomerInsight(ctx context.Context, payload *redi
 	if err != nil {
 		fmt.Printf("Failed to update customer insight: %v\n", err)
 	}
+}
+
+// Encryption helper functions for API keys (mirrors handlers/ai.go)
+func getEncryptionKeyWorker() []byte {
+	key := os.Getenv("API_KEY_ENCRYPTION_KEY")
+	if key == "" {
+		key = os.Getenv("JWT_SECRET")
+	}
+	if key == "" {
+		key = "default-encryption-key-32bytes!!" // fallback (32 bytes)
+	}
+	// Ensure key is exactly 32 bytes for AES-256
+	for len(key) < 32 {
+		key += key
+	}
+	return []byte(key[:32])
+}
+
+func decryptAPIKeyWorker(ciphertext string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(getEncryptionKeyWorker())
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }
