@@ -1,0 +1,132 @@
+services:
+  # MariaDB Database
+  mariadb:
+    image: mariadb:11.4
+    container_name: seniman-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword62A
+      MARIADB_DATABASE: lman_presensi
+      MARIADB_USER: seniman
+      MARIADB_PASSWORD: Diponegoro62A
+      MARIADB_AUTO_UPGRADE: 1
+      MARIADB_DISABLE_UPGRADE_BACKUP: 1
+    ports:
+      - "63308:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    command: 
+      - --innodb-buffer-pool-size=256M
+      - --max-connections=200
+      - --innodb-log-file-size=64M
+      - --innodb-flush-log-at-trx-commit=2
+      - --innodb-file-per-table=1
+    restart: unless-stopped
+    networks:
+      - seniman-network
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb -h localhost -u$${MARIADB_USER} -p$${MARIADB_PASSWORD} -e 'SELECT 1;' || exit 1"]
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+
+  # Main Seniman Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      target: runner
+    container_name: seniman-app
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NUXT_HOST=0.0.0.0
+      - NUXT_PORT=3000
+      - NUXT_BASE_URL=/seniman/
+      - NUXT_APP_BASE_URL=/seniman/
+      - NUXT_APP_CDN_URL=/seniman
+      # Database Configuration
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=lman_presensi
+      - DB_USER=seniman
+      - DB_PASSWORD=Diponegoro62A
+      - DATABASE_URL=mysql://seniman:Diponegoro62A@mariadb:3306/lman_presensi
+      # Session & Security
+      - SESSION_SECRET=${SESSION_SECRET:-seniman-secret-jwt-key-production-2024}
+      - SESSION_COOKIE_NAME=auth_token
+      - SESSION_EXPIRES_IN_DAYS=7
+      # SSO Configuration
+      - SSO_BASE_URL=${SSO_BASE_URL:-https://lman.id/sso/api_v1}
+      - SSO_MOCK=${SSO_MOCK:-false}
+      - SSO_MOCK_PASSWORD=${SSO_MOCK_PASSWORD:-}
+      - SSO_ADMIN_USERS=${SSO_ADMIN_USERS:-198706282018073003,sugeng.riyadi10@gmail.com}
+      - SSO_SDM_USERS=${SSO_SDM_USERS:-}
+      # MinIO Configuration
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-https://file.lman.id}
+      - MINIO_PORT=${MINIO_PORT:-443}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-true}
+      - MINIO_BUCKET=${MINIO_BUCKET:-s3-mia}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - FILE_PUBLIC_BASE_URL=${FILE_PUBLIC_BASE_URL:-https://file.lman.id/image/full}
+      # Application Configuration
+      - DEFAULT_APP_NAME=${DEFAULT_APP_NAME:-Presensi Wajah & Lokasi}
+      - DEFAULT_APP_LOGO=${DEFAULT_APP_LOGO:-}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+      - GEOLOCATION_ACCURACY=${GEOLOCATION_ACCURACY:-50}
+      # Security settings
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-900000}
+    ports:
+      - "3068:3000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - seniman-network
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - uploads:/app/public/uploads
+      # Face recognition models (read-only)
+      - ./public/models:/app/public/models:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/seniman/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Database Backup Service
+  cron_backup_db:
+    image: fradelg/mysql-cron-backup
+    container_name: seniman-backup
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./db_backup:/backup
+    environment:
+      - MYSQL_USER=root
+      - MYSQL_PASS=rootpassword62A
+      - MYSQL_DB=lman_presensi
+      - CRON_TIME=0 2 * * *  # Backup setiap hari jam 2 pagi
+      - MYSQL_HOST=mariadb
+      - MYSQL_PORT=3306
+      - TIMEOUT=30s
+      - INIT_BACKUP=1
+      - GZIP=true
+    networks:
+      - seniman-network
+
+volumes:
+  mariadb_data:
+    driver: local
+  uploads:
+    driver: local
+
+networks:
+  seniman-network:
+    driver: bridge
