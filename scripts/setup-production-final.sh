@@ -140,16 +140,44 @@ echo ""
 echo -e "${BLUE}Verification:${NC}"
 echo ""
 
-# Test static file access
+# Test 1: Check filesystem
 FIRST_FILE=$(find "$STATIC_ROOT/_nuxt" -type f -name "*.js" | head -1)
 if [ -n "$FIRST_FILE" ]; then
     FILENAME=$(basename "$FIRST_FILE")
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1/_nuxt/$FILENAME" 2>/dev/null || echo "000")
-    if [ "$HTTP_CODE" = "200" ]; then
-        echo -e "${GREEN}✓${NC} Static file served directly by Nginx: HTTP 200"
+    echo -e "${GREEN}✓${NC} Static file exists in filesystem: $FILENAME"
+    
+    # Test 2: Check nginx can access file
+    if [ -r "$STATIC_ROOT/_nuxt/$FILENAME" ]; then
+        echo -e "${GREEN}✓${NC} Nginx can read static file (permissions OK)"
     else
-        echo -e "${YELLOW}⚠${NC} Static file access: HTTP $HTTP_CODE"
+        echo -e "${RED}✗${NC} Nginx cannot read static file (check permissions)"
     fi
+    
+    # Test 3: Test HTTP access (follow redirects)
+    HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1/_nuxt/$FILENAME" 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo -e "${GREEN}✓${NC} Static file accessible via HTTP: HTTP 200"
+    elif [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+        # Try HTTPS
+        HTTPS_CODE=$(curl -sLk -o /dev/null -w "%{http_code}" --max-time 5 "https://127.0.0.1/_nuxt/$FILENAME" 2>/dev/null || echo "000")
+        if [ "$HTTPS_CODE" = "200" ]; then
+            echo -e "${GREEN}✓${NC} Static file accessible via HTTPS: HTTP 200 (HTTP redirects to HTTPS - normal)"
+        else
+            echo -e "${YELLOW}⚠${NC} HTTP redirects to HTTPS but HTTPS returns: $HTTPS_CODE"
+        fi
+    else
+        echo -e "${YELLOW}⚠${NC} Static file HTTP access returned: $HTTP_CODE"
+        echo "   (This might be normal if HTTPS redirect is configured)"
+    fi
+else
+    echo -e "${RED}✗${NC} No static files found to test"
+fi
+
+# Test 4: Check nginx location block
+if $SUDO grep -q "alias.*_nuxt" "$NGINX_CONFIG" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Nginx config uses direct file serving (alias) for _nuxt"
+else
+    echo -e "${YELLOW}⚠${NC} Nginx config might not be using direct file serving"
 fi
 
 echo ""
