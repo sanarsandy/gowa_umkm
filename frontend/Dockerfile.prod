@@ -26,8 +26,26 @@ RUN adduser --system --uid 1001 nuxtjs
 # Copy hasil build (.output directory yang sudah include public assets)
 COPY --from=builder --chown=nuxtjs:nodejs /app/.output ./.output
 
+# CRITICAL FIX: Nitro dengan preset node-server mencari static files di
+# .output/server/chunks/public/_nuxt/ tapi file ada di .output/public/_nuxt/
+# Solusi: Buat symlink atau copy files ke lokasi yang dicari Nitro
+RUN if [ -d ".output/public" ] && [ -d ".output/server/chunks" ]; then \
+        mkdir -p .output/server/chunks/public && \
+        if [ -d ".output/public/_nuxt" ]; then \
+            cp -r .output/public/_nuxt .output/server/chunks/public/ || \
+            ln -sf ../../../../public/_nuxt .output/server/chunks/public/_nuxt; \
+        fi && \
+        if [ -d ".output/public/builds" ]; then \
+            cp -r .output/public/builds .output/server/chunks/public/ || \
+            ln -sf ../../../../public/builds .output/server/chunks/public/builds; \
+        fi; \
+    fi
+
 # Verify static files exist (for debugging)
-RUN ls -la .output/public/_nuxt/ 2>/dev/null || echo "Warning: _nuxt directory not found in .output/public"
+RUN echo "=== Checking .output/public/_nuxt ===" && \
+    ls -la .output/public/_nuxt/ 2>/dev/null | head -5 || echo "Warning: _nuxt not in public" && \
+    echo "=== Checking .output/server/chunks/public/_nuxt ===" && \
+    ls -la .output/server/chunks/public/_nuxt/ 2>/dev/null | head -5 || echo "Warning: _nuxt not in server/chunks/public"
 
 USER nuxtjs
 EXPOSE 3000
