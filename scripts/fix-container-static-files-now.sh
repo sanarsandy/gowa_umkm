@@ -42,17 +42,18 @@ docker exec "$CONTAINER_NAME" sh -c "
 "
 echo ""
 
-echo "2. Creating destination directory..."
+echo "2. Creating destination directory (as root)..."
 echo "----------------------------------------"
-docker exec "$CONTAINER_NAME" sh -c "mkdir -p /app/.output/server/chunks/public"
-echo "✓ Directory created"
+docker exec -u root "$CONTAINER_NAME" sh -c "mkdir -p /app/.output/server/chunks/public && chown -R 1001:1001 /app/.output/server/chunks/public"
+echo "✓ Directory created with correct permissions"
 echo ""
 
-echo "3. Copying _nuxt directory..."
+echo "3. Copying _nuxt directory (as root)..."
 echo "----------------------------------------"
-docker exec "$CONTAINER_NAME" sh -c "
+docker exec -u root "$CONTAINER_NAME" sh -c "
     if [ -d '/app/.output/public/_nuxt' ]; then
-        cp -a /app/.output/public/_nuxt /app/.output/server/chunks/public/ && \
+        cp -r /app/.output/public/_nuxt /app/.output/server/chunks/public/ && \
+        chown -R 1001:1001 /app/.output/server/chunks/public/_nuxt && \
         echo '✓ _nuxt directory copied'
     else
         echo '✗ Source directory does not exist'
@@ -61,11 +62,12 @@ docker exec "$CONTAINER_NAME" sh -c "
 "
 echo ""
 
-echo "4. Copying builds directory (if exists)..."
+echo "4. Copying builds directory (if exists, as root)..."
 echo "----------------------------------------"
-docker exec "$CONTAINER_NAME" sh -c "
+docker exec -u root "$CONTAINER_NAME" sh -c "
     if [ -d '/app/.output/public/builds' ]; then
-        cp -a /app/.output/public/builds /app/.output/server/chunks/public/ && \
+        cp -r /app/.output/public/builds /app/.output/server/chunks/public/ && \
+        chown -R 1001:1001 /app/.output/server/chunks/public/builds && \
         echo '✓ builds directory copied'
     else
         echo '⚠ builds directory does not exist (optional)'
@@ -73,20 +75,25 @@ docker exec "$CONTAINER_NAME" sh -c "
 "
 echo ""
 
-echo "5. Copying other files from public root..."
+echo "5. Copying other files from public root (as root)..."
 echo "----------------------------------------"
-docker exec "$CONTAINER_NAME" sh -c "
+docker exec -u root "$CONTAINER_NAME" sh -c "
     find /app/.output/public -maxdepth 1 -type f -exec cp {} /app/.output/server/chunks/public/ \; 2>/dev/null || true && \
-    find /app/.output/public -mindepth 1 -maxdepth 1 -type d ! -name '_nuxt' ! -name 'builds' -exec cp -a {} /app/.output/server/chunks/public/ \; 2>/dev/null || true && \
+    find /app/.output/public -mindepth 1 -maxdepth 1 -type d ! -name '_nuxt' ! -name 'builds' -exec cp -r {} /app/.output/server/chunks/public/ \; 2>/dev/null || true && \
+    chown -R 1001:1001 /app/.output/server/chunks/public && \
     echo '✓ Other files copied'
 "
 echo ""
 
-echo "6. Setting permissions..."
+echo "6. Verifying permissions..."
 echo "----------------------------------------"
 docker exec "$CONTAINER_NAME" sh -c "
-    chown -R 1001:1001 /app/.output/server/chunks/public && \
-    echo '✓ Permissions set'
+    if [ -d '/app/.output/server/chunks/public/_nuxt' ]; then
+        ls -ld /app/.output/server/chunks/public/_nuxt | head -1
+        echo '✓ Permissions verified'
+    else
+        echo '✗ Directory does not exist'
+    fi
 "
 echo ""
 
