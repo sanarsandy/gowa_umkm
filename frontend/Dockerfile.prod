@@ -56,6 +56,9 @@ RUN if [ -d ".output/public" ] && [ -d ".output/server/chunks" ]; then \
             cp -rv .output/public/builds .output/server/chunks/public/ && \
             echo "✓ Builds directory copied"; \
         fi && \
+        echo "Copying all other files from public..." && \
+        find .output/public -maxdepth 1 -type f -exec cp {} .output/server/chunks/public/ \; 2>/dev/null || true && \
+        find .output/public -mindepth 1 -maxdepth 1 -type d ! -name "_nuxt" ! -name "builds" -exec cp -r {} .output/server/chunks/public/ \; 2>/dev/null || true && \
         echo "Setting permissions..." && \
         chown -R nuxtjs:nodejs .output/server/chunks/public && \
         echo "=== Copy completed ==="; \
