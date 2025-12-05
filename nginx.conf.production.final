@@ -1,0 +1,215 @@
+# ============================================================================
+# Production Nginx Configuration - BEST PRACTICE
+# ============================================================================
+# Best Practice: Serve static files directly from filesystem (not proxied)
+# This is the recommended approach for Nuxt.js production deployment
+# ============================================================================
+#
+# Setup:
+# 1. Extract static files: ./scripts/extract-static-files.sh
+# 2. Copy this file: sudo cp nginx.conf.production.final /etc/nginx/sites-available/app3.anakhebat.web.id
+# 3. Replace {{STATIC_ROOT}} with actual path (default: /var/www/gowa_umkm/static)
+# 4. Test: sudo nginx -t
+# 5. Reload: sudo systemctl reload nginx
+# ============================================================================
+
+# WebSocket upgrade map
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    server_name app3.anakhebat.web.id;
+
+    # Root directory for static files
+    root {{STATIC_ROOT}};
+    index index.html;
+
+    # Logging
+    access_log /var/log/nginx/app3_access.log combined buffer=32k flush=5s;
+    error_log /var/log/nginx/app3_error.log warn;
+
+    # Client body size limit
+    client_max_body_size 50M;
+    client_body_buffer_size 128k;
+
+    # =====================================================================
+    # STATIC FILES (_nuxt/*) - DIRECT FILE SERVING (BEST PRACTICE)
+    # =====================================================================
+    # Serve static files directly from filesystem - NO PROXY
+    # This is the recommended approach for maximum performance
+    location /_nuxt/ {
+        alias {{STATIC_ROOT}}/_nuxt/;
+        
+        # Security: Only allow GET and HEAD
+        limit_except GET HEAD {
+            deny all;
+        }
+        
+        # Aggressive caching for immutable assets (1 year)
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        
+        # Enable gzip compression
+        gzip_static on;
+        
+        # Fallback to proxy if file not found (shouldn't happen)
+        try_files $uri @nuxt_proxy;
+    }
+    
+    # Fallback: Proxy to container if file not found in filesystem
+    location @nuxt_proxy {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        access_log off;
+    }
+
+    # =====================================================================
+    # OTHER STATIC ASSETS (images, fonts, etc.)
+    # =====================================================================
+    location ~* \.(ico|png|jpg|jpeg|gif|svg|webp|avif|woff|woff2|ttf|eot|json|txt)$ {
+        root {{STATIC_ROOT}};
+        expires 6M;
+        add_header Cache-Control "public, max-age=15552000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        access_log off;
+        
+        # Enable gzip for SVG and JSON
+        gzip_static on;
+        
+        # Fallback to proxy
+        try_files $uri @nuxt_proxy;
+    }
+
+    # =====================================================================
+    # HTML PAGES - Proxy to Nuxt (SSR)
+    # =====================================================================
+    location / {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_cache_bypass $http_upgrade;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Buffer settings
+        proxy_buffering on;
+        proxy_buffer_size 4k;
+        proxy_buffers 8 4k;
+        proxy_busy_buffers_size 8k;
+
+        # No cache for HTML (always fresh)
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
+    }
+
+    # =====================================================================
+    # API ENDPOINTS
+    # =====================================================================
+    location /api/ {
+        proxy_pass http://127.0.0.1:8087;
+        proxy_http_version 1.1;
+        
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket timeouts
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_connect_timeout 60s;
+
+        # Disable buffering for WebSocket
+        proxy_buffering off;
+        proxy_request_buffering off;
+        
+        # CORS headers
+        add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS, PATCH' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, X-Requested-With, Accept' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS, PATCH' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, X-Requested-With, Accept' always;
+            add_header 'Access-Control-Max-Age' '86400' always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+    }
+
+    # =====================================================================
+    # HEALTH CHECK
+    # =====================================================================
+    location /health {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        access_log off;
+    }
+
+    # SSL CONFIGURATION
+    listen 443 ssl http2; 
+    ssl_certificate /etc/letsencrypt/live/app3.anakhebat.web.id/fullchain.pem; 
+    ssl_certificate_key /etc/letsencrypt/live/app3.anakhebat.web.id/privkey.pem; 
+    include /etc/letsencrypt/options-ssl-nginx.conf; 
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 1000;
+    gzip_comp_level 6;
+    gzip_types 
+        text/plain 
+        text/css 
+        text/xml 
+        text/javascript 
+        application/x-javascript 
+        application/javascript 
+        application/json 
+        application/xml 
+        image/svg+xml;
+}
+
+# REDIRECT HTTP -> HTTPS
+server {
+    if ($host = app3.anakhebat.web.id) {
+        return 301 https://$host$request_uri;
+    }
+    server_name app3.anakhebat.web.id;
+    listen 80;
+    return 404;
+}
+
