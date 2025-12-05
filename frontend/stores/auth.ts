@@ -50,25 +50,46 @@ export const useAuthStore = defineStore('auth', () => {
         return new Promise((resolve) => {
             // Force remove cookies with all possible variations
             if (process.client) {
-                // Clear with matching attributes
-                const cookieOptions = `path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${isSecure ? '; Secure' : ''}`
-                document.cookie = `token=; ${cookieOptions}`
-                document.cookie = `user=; ${cookieOptions}`
+                console.log('[Auth] Logout: clearing cookies...')
 
-                // Also try without SameSite (for older browsers)
-                document.cookie = `token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
-                document.cookie = `user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${isSecure ? '; Secure' : ''}`
+                // Get current domain for cookie clearing
+                const domain = window.location.hostname
+                const isSecureNow = window.location.protocol === 'https:'
 
-                // Clear without Secure flag as fallback
-                document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
-                document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
+                // Clear all possible cookie variations
+                const cookiesToClear = ['token', 'user']
+                const paths = ['/', '']
+                const domains = ['', domain, `.${domain}`]
+
+                cookiesToClear.forEach(name => {
+                    paths.forEach(path => {
+                        domains.forEach(d => {
+                            // Without Secure
+                            const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path || '/'}`
+                            document.cookie = d ? `${base}; domain=${d}` : base
+                            document.cookie = d ? `${base}; domain=${d}; SameSite=Lax` : `${base}; SameSite=Lax`
+
+                            // With Secure (for HTTPS)
+                            if (isSecureNow) {
+                                document.cookie = d ? `${base}; domain=${d}; Secure` : `${base}; Secure`
+                                document.cookie = d ? `${base}; domain=${d}; Secure; SameSite=Lax` : `${base}; Secure; SameSite=Lax`
+                                document.cookie = d ? `${base}; domain=${d}; Secure; SameSite=None` : `${base}; Secure; SameSite=None`
+                            }
+                        })
+                    })
+                })
 
                 // Clear Pinia state from localStorage
                 localStorage.removeItem('auth')
                 localStorage.removeItem('pinia')
 
-                // Small delay to ensure browser processes cookie removal
-                setTimeout(resolve, 100)
+                // Clear sessionStorage too
+                sessionStorage.clear()
+
+                console.log('[Auth] Logout: cookies cleared, remaining:', document.cookie)
+
+                // Delay to ensure browser processes cookie removal
+                setTimeout(resolve, 150)
             } else {
                 resolve()
             }
