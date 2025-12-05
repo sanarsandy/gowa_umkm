@@ -100,25 +100,25 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
 );
 
 -- Indexes for knowledge_base
-CREATE INDEX idx_knowledge_base_tenant_id ON knowledge_base(tenant_id);
-CREATE INDEX idx_knowledge_base_category ON knowledge_base(category);
-CREATE INDEX idx_knowledge_base_is_active ON knowledge_base(is_active) WHERE is_active = TRUE;
-CREATE INDEX idx_knowledge_base_keywords ON knowledge_base USING GIN(keywords);
-CREATE INDEX idx_knowledge_base_tags ON knowledge_base USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_tenant_id ON knowledge_base(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_category ON knowledge_base(category);
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_is_active ON knowledge_base(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_keywords ON knowledge_base USING GIN(keywords);
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_tags ON knowledge_base USING GIN(tags);
 -- Vector similarity search index (IVFFlat for faster approximate search)
 -- CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);  -- DISABLED: requires pgvector
 
 -- Indexes for ai_conversation_logs
-CREATE INDEX idx_ai_logs_tenant_id ON ai_conversation_logs(tenant_id);
-CREATE INDEX idx_ai_logs_customer_id ON ai_conversation_logs(customer_id);
-CREATE INDEX idx_ai_logs_created_at ON ai_conversation_logs(created_at DESC);
-CREATE INDEX idx_ai_logs_action_taken ON ai_conversation_logs(action_taken);
-CREATE INDEX idx_ai_logs_detected_intent ON ai_conversation_logs(detected_intent);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_tenant_id ON ai_conversation_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_customer_id ON ai_conversation_logs(customer_id);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_created_at ON ai_conversation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_action_taken ON ai_conversation_logs(action_taken);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_detected_intent ON ai_conversation_logs(detected_intent);
 
 -- Indexes for prompt_templates
-CREATE INDEX idx_prompt_templates_tenant_id ON prompt_templates(tenant_id);
-CREATE INDEX idx_prompt_templates_category ON prompt_templates(category);
-CREATE INDEX idx_prompt_templates_is_default ON prompt_templates(is_default) WHERE is_default = TRUE;
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_tenant_id ON prompt_templates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_category ON prompt_templates(category);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_is_default ON prompt_templates(is_default) WHERE is_default = TRUE;
 
 -- Comments
 COMMENT ON TABLE knowledge_base IS 'Knowledge base for AI auto-reply system';

@@ -43,7 +43,7 @@ services:
     container_name: gowa-api-prod
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8087:8080"
+      - "8087:8080"
     environment:
       DB_HOST: ${DB_HOST:-db}
       DB_USER: ${DB_USER:-gowa_user}
@@ -85,10 +85,19 @@ services:
       NODE_ENV: production
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-http://localhost:8080}
       NITRO_PRESET: node-server
+      PORT: 3000
+      HOST: 0.0.0.0
     depends_on:
-      - api
+      api:
+        condition: service_started
     networks:
       - gowa-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   gowa-network:

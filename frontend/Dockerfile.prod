@@ -1,37 +1,44 @@
 FROM node:22-alpine AS base
-
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-COPY . .
-
-FROM base AS development
-RUN npm run postinstall || true
-
+# STAGE 2: Builder
 FROM base AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+# Build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
-FROM node:22-alpine
+# STAGE 3: Runner
+FROM base AS runner
 WORKDIR /app
-
-# Copy the entire .output directory
-COPY --from=builder /app/.output ./
-
-# Create symlink for public assets
-# This ensures Nuxt can serve static files from public directory
-RUN mkdir -p /app/server/chunks && \
-    ln -s /app/public /app/server/chunks/public && \
-    ls -la /app/public/_nuxt/ || echo "Warning: _nuxt directory not found"
-
 ENV NODE_ENV=production
-ENV NITRO_HOST=0.0.0.0
-ENV NITRO_PORT=3000
+ENV PORT=3000
+ENV HOST=0.0.0.0
 ENV NITRO_PRESET=node-server
 
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nuxtjs
+
+# Copy hasil build (.output directory yang sudah include public assets)
+COPY --from=builder --chown=nuxtjs:nodejs /app/.output ./.output
+
+# Verify static files exist (for debugging)
+RUN ls -la .output/public/_nuxt/ 2>/dev/null || echo "Warning: _nuxt directory not found in .output/public"
+
+USER nuxtjs
 EXPOSE 3000
 
-WORKDIR /app
-CMD ["node", "server/index.mjs"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+CMD ["node", ".output/server/index.mjs"]
+
+
+
+
 

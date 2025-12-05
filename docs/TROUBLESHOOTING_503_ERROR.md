@@ -189,3 +189,6 @@ Jika setelah semua langkah di atas masih error, cek:
 3. Firewall rules
 4. Nuxt version compatibility issues
 
+
+
+
