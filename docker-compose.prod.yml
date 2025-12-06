@@ -72,6 +72,8 @@ services:
     volumes:
       # WhatsApp session persistence
       - whatsapp_stores:/app/data/whatsapp_stores
+      # Uploads (media files)
+      - uploads_data:/app/data/uploads
 
   app:
     build:
@@ -109,4 +111,6 @@ volumes:
   redis_data:
     driver: local
   whatsapp_stores:
+    driver: local
+  uploads_data:
     driver: local
