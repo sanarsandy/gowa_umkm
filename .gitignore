@@ -103,3 +103,4 @@ go.work
 # Artifacts (internal use only)
 .gemini/
 ..bfg-report/
+scripts/
