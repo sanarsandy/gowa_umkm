@@ -119,6 +119,9 @@ func EchoServer() *echo.Echo {
 		AllowCredentials: true,
 	}))
 
+	// Serve static files for uploads
+	e.Static("/uploads", "/app/data/uploads")
+
 	e.GET("/", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"message": "Welcome to Gowa UMKM WhatsApp API",
