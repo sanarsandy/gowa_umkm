@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Documentation (internal only)
+docs/
+
 # Dependencies
 node_modules/
 vendor/
@@ -99,3 +102,4 @@ go.work
 
 # Artifacts (internal use only)
 .gemini/
+..bfg-report/
