@@ -252,6 +252,51 @@
                   ></textarea>
                 </div>
 
+                <!-- Media Upload -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Lampiran Media (Opsional)</label>
+                  <div v-if="!form.media_url" class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-400 transition cursor-pointer" @click="openKnowledgeFilePicker">
+                    <svg class="w-8 h-8 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p class="mt-2 text-sm text-gray-600">Klik untuk upload gambar atau dokumen</p>
+                    <p class="text-xs text-gray-400">PNG, JPG, PDF max 10MB</p>
+                  </div>
+                  <div v-else class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                      <svg v-if="form.media_type === 'image'" class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <svg v-else class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-gray-900 truncate">{{ uploadedFileName || 'File terlampir' }}</p>
+                      <p class="text-xs text-gray-500">{{ form.media_type }}</p>
+                    </div>
+                    <button @click="removeMedia" class="p-1 hover:bg-gray-200 rounded" type="button">
+                      <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <input 
+                    ref="knowledgeFileInput"
+                    type="file"
+                    accept="image/*,.pdf,.doc,.docx"
+                    class="hidden"
+                    @change="handleKnowledgeFileUpload"
+                  />
+                  <div v-if="uploadingKnowledgeFile" class="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Mengunggah...</span>
+                  </div>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4">
                   <!-- Category -->
                   <div>
@@ -417,6 +462,8 @@ interface KnowledgeItem {
   priority: number
   usage_count: number
   is_active: boolean
+  media_url?: string
+  media_type?: string
   created_at: string
 }
 
@@ -442,11 +489,16 @@ const form = ref({
   keywords: [] as string[],
   tags: [] as string[],
   priority: 5,
-  is_active: true
+  is_active: true,
+  media_url: '',
+  media_type: ''
 })
 
 const keywordsInput = ref('')
 const tagsInput = ref('')
+const knowledgeFileInput = ref<HTMLInputElement | null>(null)
+const uploadingKnowledgeFile = ref(false)
+const uploadedFileName = ref('')
 
 const categories = computed(() => {
   const cats = new Set<string>()
@@ -526,7 +578,11 @@ const editItem = (item: KnowledgeItem) => {
     keywords: item.keywords || [],
     tags: item.tags || [],
     priority: item.priority || 5,
-    is_active: item.is_active
+    tags: item.tags || [],
+    priority: item.priority || 5,
+    is_active: item.is_active,
+    media_url: item.media_url || '',
+    media_type: item.media_type || ''
   }
   keywordsInput.value = (item.keywords || []).join(', ')
   tagsInput.value = (item.tags || []).join(', ')
@@ -605,10 +661,53 @@ const closeModal = () => {
     keywords: [],
     tags: [],
     priority: 5,
-    is_active: true
+    priority: 5,
+    is_active: true,
+    media_url: '',
+    media_type: ''
   }
   keywordsInput.value = ''
   tagsInput.value = ''
+}
+
+const openKnowledgeFilePicker = () => {
+  knowledgeFileInput.value?.click()
+}
+
+const handleKnowledgeFileUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  
+  uploadingKnowledgeFile.value = true
+  try {
+    const formDataUpload = new FormData()
+    formDataUpload.append('file', file)
+    
+    const response = await apiFetch<any>('/api/upload', {
+      method: 'POST',
+      body: formDataUpload
+    })
+    
+    if (response.success) {
+      form.value.media_url = response.file_url
+      form.value.media_type = response.file_type
+      uploadedFileName.value = response.file_name
+    } else {
+      throw new Error(response.error || 'Upload failed')
+    }
+  } catch (err: any) {
+    showToast(err.data?.error || err.message || 'Gagal upload file', 'error')
+  } finally {
+    uploadingKnowledgeFile.value = false
+    target.value = ''
+  }
+}
+
+const removeMedia = () => {
+  form.value.media_url = ''
+  form.value.media_type = ''
+  uploadedFileName.value = ''
 }
 
 const showToast = (message: string, type: 'success' | 'error') => {

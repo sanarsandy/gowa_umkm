@@ -29,6 +29,7 @@ type MessageWorker struct {
 // WhatsAppService interface for sending messages
 type WhatsAppService interface {
 	SendMessage(ctx context.Context, tenantID string, recipientJID string, message string) (string, error)
+	SendMediaMessage(ctx context.Context, tenantID string, recipientJID string, mediaData []byte, mediaType string, fileName string, caption string) (string, error)
 }
 
 // NewMessageWorker creates a new message worker
@@ -196,7 +197,8 @@ func (w *MessageWorker) getKnowledgeBase(ctx context.Context, tenantID string) (
 	var knowledge []ai.Knowledge
 	
 	query := `
-		SELECT id, title, content, COALESCE(category, '') as category, priority
+		SELECT id, title, content, COALESCE(category, '') as category, priority,
+		       COALESCE(media_url, '') as media_url, COALESCE(media_type, '') as media_type
 		FROM knowledge_base
 		WHERE tenant_id = $1 AND is_active = true
 		ORDER BY priority DESC
@@ -211,7 +213,7 @@ func (w *MessageWorker) getKnowledgeBase(ctx context.Context, tenantID string) (
 	
 	for rows.Next() {
 		var k ai.Knowledge
-		if err := rows.Scan(&k.ID, &k.Title, &k.Content, &k.Category, &k.Priority); err != nil {
+		if err := rows.Scan(&k.ID, &k.Title, &k.Content, &k.Category, &k.Priority, &k.MediaURL, &k.MediaType); err != nil {
 			continue
 		}
 		knowledge = append(knowledge, k)
@@ -483,12 +485,47 @@ Selalu gunakan bahasa yang santun dan profesional.`
 	} else {
 		// Send auto-reply via WhatsApp
 		if w.whatsappService != nil {
+			// Send text response first
 			messageID, err := w.whatsappService.SendMessage(ctx, payload.TenantID, payload.SenderJID, response.Response)
 			if err != nil {
 				fmt.Printf("[Worker] Failed to send auto-reply: %v\n", err)
 				action = "failed"
 			} else {
 				fmt.Printf("[Worker] Auto-reply sent! MessageID: %s\n", messageID)
+			}
+
+			// Send attachments if any
+			if len(response.Attachments) > 0 {
+				fmt.Printf("[Worker] Sending %d attachments\n", len(response.Attachments))
+				for _, attachment := range response.Attachments {
+					if attachment.MediaURL == "" {
+						continue
+					}
+
+					// Fetch media data (assuming URL is accessible)
+					// In a real implementation, we might need to handle local files vs remote URLs
+					// For now, we'll assume it's a remote URL and we need to download it first?
+					// Or if it's a local path, read it.
+					// Let's implement a simple helper to get media data
+					mediaData, err := w.fetchMediaData(attachment.MediaURL)
+					if err != nil {
+						fmt.Printf("[Worker] Failed to fetch media data: %v\n", err)
+						continue
+					}
+
+					// Send media
+					mediaType := attachment.MediaType
+					if mediaType == "" {
+						mediaType = "image" // Default to image
+					}
+
+					_, err = w.whatsappService.SendMediaMessage(ctx, payload.TenantID, payload.SenderJID, mediaData, mediaType, "attachment", attachment.Title)
+					if err != nil {
+						fmt.Printf("[Worker] Failed to send attachment: %v\n", err)
+					} else {
+						fmt.Printf("[Worker] Attachment sent: %s\n", attachment.Title)
+					}
+				}
 			}
 		}
 	}

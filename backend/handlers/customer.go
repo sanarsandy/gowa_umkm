@@ -47,6 +47,7 @@ type CustomerMessage struct {
 	ID          string    `json:"id"`
 	MessageText string    `json:"message_text"`
 	MessageType string    `json:"message_type"`
+	MediaURL    string    `json:"media_url,omitempty"`
 	IsFromMe    bool      `json:"is_from_me"`
 	Timestamp   time.Time `json:"timestamp"`
 }
@@ -241,7 +242,8 @@ func GetCustomerDetail(c echo.Context) error {
 	messagesQuery := `
 		SELECT 
 			id, COALESCE(message_text, '') as message_text, 
-			message_type, is_from_me, to_timestamp(timestamp) as timestamp
+			message_type, COALESCE(media_url, '') as media_url,
+			is_from_me, to_timestamp(timestamp) as timestamp
 		FROM whatsapp_messages
 		WHERE tenant_id = $1 AND (sender_jid = $2 OR chat_jid = $2)
 		ORDER BY timestamp DESC
@@ -261,7 +263,7 @@ func GetCustomerDetail(c echo.Context) error {
 	messages := []CustomerMessage{}
 	for rows.Next() {
 		var msg CustomerMessage
-		err := rows.Scan(&msg.ID, &msg.MessageText, &msg.MessageType, &msg.IsFromMe, &msg.Timestamp)
+		err := rows.Scan(&msg.ID, &msg.MessageText, &msg.MessageType, &msg.MediaURL, &msg.IsFromMe, &msg.Timestamp)
 		if err != nil {
 			continue
 		}

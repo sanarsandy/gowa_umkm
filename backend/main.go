@@ -162,7 +162,14 @@ func EchoServer() *echo.Echo {
 	whatsapp.GET("/status", handlers.GetWhatsAppStatus)
 	whatsapp.GET("/qr/stream", handlers.StreamQRCode)
 	whatsapp.POST("/send", handlers.SendWhatsAppMessage)
+	whatsapp.POST("/send/media", handlers.SendWhatsAppMedia)
 	whatsapp.DELETE("/messages/:jid", handlers.ClearChatMessages)
+
+	// File Upload Route
+	api.POST("/upload", handlers.UploadFile)
+
+	// Serve uploaded files (static)
+	e.Static("/uploads", "/app/data/uploads")
 
 	// Dashboard Routes
 	dashboard := api.Group("/dashboard")

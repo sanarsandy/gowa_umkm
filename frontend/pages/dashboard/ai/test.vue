@@ -45,7 +45,34 @@
 
       <!-- Response Text -->
       <div class="mb-4 p-4 bg-green-50 rounded-lg">
-        <p class="text-gray-800">{{ response.response }}</p>
+        <p class="text-gray-800 whitespace-pre-wrap">{{ response.response }}</p>
+      </div>
+
+      <!-- Attachments -->
+      <div v-if="response.attachments && response.attachments.length > 0" class="mb-4">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Attachments</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div 
+            v-for="(att, idx) in response.attachments" 
+            :key="idx"
+            class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg bg-gray-50"
+          >
+            <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg v-if="att.media_type === 'image'" class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <svg v-else class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-900 truncate">{{ att.title }}</p>
+              <a :href="att.media_url" target="_blank" class="text-xs text-indigo-600 hover:underline truncate block">
+                {{ att.media_url }}
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Metadata -->

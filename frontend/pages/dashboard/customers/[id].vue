@@ -159,7 +159,13 @@
       <!-- Right Column - Chat & Notes -->
       <div class="lg:col-span-2 space-y-6">
         <!-- Real-time Chat -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col" style="height: 500px;">
+        <div 
+          :class="[
+            'bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col transition-all duration-300',
+            isFullscreen ? 'fixed inset-0 z-50 h-screen rounded-none' : ''
+          ]"
+          :style="isFullscreen ? '' : 'height: 500px;'"
+        >
           <!-- Chat Header -->
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -181,6 +187,18 @@
               >
                 <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+              </button>
+              <button 
+                @click="toggleFullscreen" 
+                class="p-2 hover:bg-blue-50 rounded-lg transition"
+                :title="isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'"
+              >
+                <svg v-if="!isFullscreen" class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+                </svg>
+                <svg v-else class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"/>
                 </svg>
               </button>
               <button 
@@ -211,7 +229,32 @@
                   : 'bg-white text-gray-800 rounded-bl-md'
               ]"
             >
-              <p class="text-sm whitespace-pre-wrap break-words">{{ msg.message_text || msg.body }}</p>
+              <!-- Media Preview -->
+              <div v-if="msg.media_url || msg.message_type === 'image'" class="mb-2">
+                <img 
+                  v-if="msg.message_type === 'image'" 
+                  :src="getMediaUrl(msg.media_url)"
+                  alt="Image"
+                  class="max-w-full rounded-lg cursor-pointer hover:opacity-90"
+                  style="max-height: 200px;"
+                  @click="openMediaPreview(msg.media_url)"
+                />
+                <a 
+                  v-else-if="msg.message_type === 'document'"
+                  :href="getMediaUrl(msg.media_url)"
+                  target="_blank"
+                  class="flex items-center gap-2 p-2 bg-white/20 rounded-lg hover:bg-white/30"
+                >
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  <span class="text-sm">📄 Dokumen</span>
+                </a>
+              </div>
+              <!-- Text Content -->
+              <p v-if="msg.message_text || msg.body" class="text-sm whitespace-pre-wrap break-words">{{ msg.message_text || msg.body }}</p>
+              <p v-else-if="msg.message_type === 'image'" class="text-sm italic opacity-75">📷 Gambar</p>
+              <p v-else-if="msg.message_type === 'document'" class="text-sm italic opacity-75">📄 Dokumen</p>
               <p :class="[
                 'text-xs mt-1 text-right',
                 msg.is_from_me ? 'text-green-100' : 'text-gray-400'
@@ -224,9 +267,56 @@
           <!-- Message Input -->
           <div class="p-4 border-t border-gray-100 bg-white rounded-b-xl">
             <div class="flex items-end gap-3">
+              <!-- File Attachment Button -->
+              <button 
+                @click="openFilePicker"
+                :disabled="sendingMessage"
+                class="p-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Kirim File/Gambar"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                </svg>
+              </button>
+              <input 
+                ref="fileInput"
+                type="file"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                class="hidden"
+                @change="handleFileSelect"
+              />
+              <!-- Emoji Picker -->
+              <div class="relative">
+                <button 
+                  type="button"
+                  @click="showEmojiPicker = !showEmojiPicker"
+                  class="p-3 text-gray-500 hover:text-yellow-500 hover:bg-gray-100 rounded-xl transition"
+                  title="Emoji"
+                >
+                  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-6c.78 2.34 2.72 4 5 4s4.22-1.66 5-4H7zm8-4c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm-6 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1z"/>
+                  </svg>
+                </button>
+                <!-- Emoji Dropdown -->
+                <div 
+                  v-if="showEmojiPicker" 
+                  class="absolute bottom-12 left-0 bg-white rounded-xl shadow-lg border border-gray-200 p-3 grid grid-cols-8 gap-1 z-50"
+                  style="width: 280px;"
+                >
+                  <button 
+                    v-for="emoji in emojis" 
+                    :key="emoji"
+                    @click="insertEmoji(emoji)"
+                    class="text-xl p-1 hover:bg-gray-100 rounded transition"
+                  >
+                    {{ emoji }}
+                  </button>
+                </div>
+              </div>
               <textarea 
                 v-model="newMessage" 
                 @keydown.enter.exact.prevent="sendMessage"
+                @focus="showEmojiPicker = false"
                 placeholder="Ketik pesan..."
                 class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
                 rows="1"
@@ -244,6 +334,14 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                 </svg>
               </button>
+            </div>
+            <!-- Upload Progress -->
+            <div v-if="uploadingFile" class="mt-2 flex items-center gap-2 text-sm text-gray-500">
+              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Mengunggah file...</span>
             </div>
           </div>
         </div>
@@ -445,11 +543,35 @@ const clearingChat = ref(false)
 const showEditNameModal = ref(false)
 const editingName = ref('')
 const savingName = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploadingFile = ref(false)
+const showEmojiPicker = ref(false)
+const isFullscreen = ref(false)
+
+// Common WhatsApp emojis
+const emojis = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
+  '🙂', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘',
+  '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪',
+  '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨',
+  '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥',
+  '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕',
+  '👍', '👎', '👋', '🙏', '💪', '❤️', '🔥', '✨',
+  '🎉', '🎊', '💯', '✅', '❌', '⭐', '🌟', '💫'
+]
 
 // Real-time updates
 useRealtimeUpdates({
   onNewMessage: (data: NewMessageData) => {
-    if (!customer.value) return
+    console.log('[WS] New message received:', data)
+    if (!customer.value) {
+      console.log('[WS] No customer loaded, ignoring')
+      return
+    }
+    
+    console.log('[WS] Customer JID:', customer.value.customer_jid)
+    console.log('[WS] Sender JID:', data.sender_jid)
+    console.log('[WS] Chat JID:', data.chat_jid)
     
     // Check if message is related to current customer
     // - Incoming: sender_jid = customer JID, is_from_me = false
@@ -457,19 +579,29 @@ useRealtimeUpdates({
     const isFromCustomer = data.sender_jid === customer.value.customer_jid
     const isToCustomer = data.chat_jid === customer.value.customer_jid
     
+    console.log('[WS] isFromCustomer:', isFromCustomer, ', isToCustomer:', isToCustomer)
+    
     if (isFromCustomer || isToCustomer) {
       // Avoid duplicates
       const exists = messages.value.some(m => m.id === data.message_id)
-      if (exists) return
+      if (exists) {
+        console.log('[WS] Message already exists, skipping')
+        return
+      }
       
+      console.log('[WS] Adding message with media_url:', data.media_url)
       // Use is_from_me directly from backend - don't override it
       messages.value.push({
         id: data.message_id,
         message_text: data.message_text,
+        message_type: data.message_type || 'text',
+        media_url: data.media_url || '',
         is_from_me: data.is_from_me, // Trust backend value
         timestamp: new Date(data.timestamp * 1000).toISOString()
       })
       scrollToBottom()
+    } else {
+      console.log('[WS] Message not for current customer, ignoring')
     }
   }
 })
@@ -545,6 +677,17 @@ const loadAll = async () => {
   loading.value = false
 }
 
+// Insert emoji into message
+const insertEmoji = (emoji: string) => {
+  newMessage.value += emoji
+  showEmojiPicker.value = false
+}
+
+// Toggle fullscreen mode
+const toggleFullscreen = () => {
+  isFullscreen.value = !isFullscreen.value
+}
+
 // Send message
 const sendMessage = async () => {
   if (!newMessage.value.trim() || !customer.value || sendingMessage.value) return
@@ -568,6 +711,68 @@ const sendMessage = async () => {
     newMessage.value = messageText // Restore message on error
   } finally {
     sendingMessage.value = false
+  }
+}
+
+// File upload
+const openFilePicker = () => {
+  fileInput.value?.click()
+}
+
+const handleFileSelect = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file || !customer.value) return
+  
+  uploadingFile.value = true
+  try {
+    // First upload the file
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const config = useRuntimeConfig()
+    const apiBase = config.public.apiBase || 'http://localhost:8080'
+    const authStore = useAuthStore()
+    
+    const uploadResponse = await fetch(`${apiBase}/api/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`
+      },
+      body: formData
+    })
+    
+    const uploadResult = await uploadResponse.json()
+    if (!uploadResult.success) {
+      throw new Error(uploadResult.error || 'Upload failed')
+    }
+    
+    // Then send as media message
+    const mediaFormData = new FormData()
+    mediaFormData.append('file', file)
+    mediaFormData.append('recipient_jid', customer.value.customer_jid)
+    mediaFormData.append('caption', file.name)
+    
+    const sendResponse = await fetch(`${apiBase}/api/whatsapp/send/media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`
+      },
+      body: mediaFormData
+    })
+    
+    const sendResult = await sendResponse.json()
+    if (!sendResult.success) {
+      throw new Error(sendResult.error || 'Failed to send media')
+    }
+    
+    // Clear input
+    target.value = ''
+  } catch (error: any) {
+    console.error('Failed to send file:', error)
+    alert('Gagal mengirim file: ' + (error?.message || 'Unknown error'))
+  } finally {
+    uploadingFile.value = false
   }
 }
 
@@ -711,6 +916,24 @@ const toggleFollowUp = async () => {
     customer.value.needs_follow_up = !customer.value.needs_follow_up
   } catch (error) {
     console.error('Failed to toggle follow up:', error)
+  }
+}
+
+// Helper for media URLs
+const getMediaUrl = (url: string) => {
+  if (!url) return ''
+  // If it's already a full URL, return as-is
+  if (url.startsWith('http')) return url
+  // If it's a relative path, prepend API base
+  const config = useRuntimeConfig()
+  const apiBase = config.public.apiBase || 'http://localhost:8080'
+  return `${apiBase}${url}`
+}
+
+const openMediaPreview = (url: string) => {
+  const fullUrl = getMediaUrl(url)
+  if (fullUrl) {
+    window.open(fullUrl, '_blank')
   }
 }
 

@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"gowa-backend/db"
@@ -577,5 +580,83 @@ func ClearChatMessages(c echo.Context) error {
 		"success":        true,
 		"message":        "Chat cleared successfully",
 		"deleted_count":  rowsAffected,
+	})
+}
+
+// SendWhatsAppMedia sends a media message to a WhatsApp recipient
+func SendWhatsAppMedia(c echo.Context) error {
+	tenantID := getTenantIDFromContext(c)
+	if tenantID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Tenant not found. Please create a tenant first.",
+		})
+	}
+
+	// Parse multipart form
+	recipientJID := c.FormValue("recipient_jid")
+	caption := c.FormValue("caption")
+	mediaType := c.FormValue("media_type") // image, document
+
+	if recipientJID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Recipient JID is required",
+		})
+	}
+
+	// Get file
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "File is required",
+		})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to open file",
+		})
+	}
+	defer src.Close()
+
+	// Read file content
+	mediaData, err := io.ReadAll(src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to read file",
+		})
+	}
+
+	// Determine media type if not provided
+	if mediaType == "" {
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
+			mediaType = "image"
+		} else if ext == ".pdf" || ext == ".doc" || ext == ".docx" {
+			mediaType = "document"
+		} else {
+			mediaType = "document" // Default fallback
+		}
+	}
+
+	ctx := c.Request().Context()
+
+	fmt.Printf("[DEBUG] SendWhatsAppMedia: tenantID=%s, recipientJID=%s, type=%s, file=%s\n", tenantID, recipientJID, mediaType, file.Filename)
+
+	// Send media message
+	messageID, err := whatsappService.SendMediaMessage(ctx, tenantID, recipientJID, mediaData, mediaType, file.Filename, caption)
+	if err != nil {
+		fmt.Printf("[DEBUG] SendWhatsAppMedia: error sending media: %v\n", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	fmt.Printf("[DEBUG] SendWhatsAppMedia: media sent successfully, messageID=%s\n", messageID)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"message_id": messageID,
+		"status":     "sent",
 	})
 }

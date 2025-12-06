@@ -35,6 +35,7 @@ type AutoReplyResponse struct {
 	Confidence       float64
 	DetectedIntent   string
 	KnowledgeUsed    []string
+	Attachments      []Knowledge // Knowledge entries that have media
 	ShouldEscalate   bool
 	EscalationReason string
 	TokensUsed       int
@@ -48,11 +49,13 @@ type AutoReplyResponse struct {
 
 // Knowledge represents a knowledge base entry
 type Knowledge struct {
-	ID       string
-	Title    string
-	Content  string
-	Category string
-	Priority int
+	ID        string
+	Title     string
+	Content   string
+	Category  string
+	Priority  int
+	MediaURL  string
+	MediaType string
 }
 
 // NewAIService creates a new AI service
@@ -133,8 +136,13 @@ func (s *AIService) GenerateAutoReply(ctx context.Context, req AutoReplyRequest)
 	responseTimeMs := time.Since(startTime).Milliseconds()
 
 	knowledgeUsed := make([]string, 0)
+	attachments := make([]Knowledge, 0)
 	for _, k := range req.KnowledgeBase {
 		knowledgeUsed = append(knowledgeUsed, k.ID)
+		// If knowledge has media, add to attachments
+		if k.MediaURL != "" {
+			attachments = append(attachments, k)
+		}
 	}
 
 	return &AutoReplyResponse{
@@ -142,6 +150,7 @@ func (s *AIService) GenerateAutoReply(ctx context.Context, req AutoReplyRequest)
 		Confidence:       aiResp.Confidence,
 		DetectedIntent:   intent,
 		KnowledgeUsed:    knowledgeUsed,
+		Attachments:      attachments,
 		ShouldEscalate:   shouldEscalate,
 		EscalationReason: escalationReason,
 		TokensUsed:       aiResp.TokensUsed,

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -229,14 +230,67 @@ func (s *ClientService) handleMessage(tenantID string, evt *events.Message) {
 	
 	s.logger.Infof("[%s] Normalized JIDs - Chat: %s, Sender: %s, Customer: %s", tenantID, normalizedChatJID, normalizedSenderJID, customerJID)
 
+	// Download and save media for incoming messages
+	var mediaURL string
+	client, clientErr := s.clientManager.GetClient(tenantID)
+	if clientErr == nil && client != nil && client.IsConnected() {
+		if messageType == "image" && evt.Message.GetImageMessage() != nil && !evt.Info.IsFromMe {
+			// Download image from WhatsApp
+			imgMsg := evt.Message.GetImageMessage()
+			data, err := client.Download(context.Background(), imgMsg)
+			if err == nil {
+				// Save to local storage
+				uploadsDir := "/app/data/uploads"
+				tenantDir := filepath.Join(uploadsDir, tenantID)
+				os.MkdirAll(tenantDir, 0755)
+				
+				timestamp := time.Now().Format("20060102_150405")
+				fileName := fmt.Sprintf("%s_received.jpg", timestamp)
+				filePath := filepath.Join(tenantDir, fileName)
+				
+				if err := os.WriteFile(filePath, data, 0644); err == nil {
+					mediaURL = fmt.Sprintf("/uploads/%s/%s", tenantID, fileName)
+					s.logger.Infof("[%s] Downloaded incoming image: %s", tenantID, mediaURL)
+				}
+			} else {
+				s.logger.Errorf("[%s] Failed to download image: %v", tenantID, err)
+			}
+		} else if messageType == "document" && evt.Message.GetDocumentMessage() != nil && !evt.Info.IsFromMe {
+			// Download document from WhatsApp
+			docMsg := evt.Message.GetDocumentMessage()
+			data, err := client.Download(context.Background(), docMsg)
+			if err == nil {
+				uploadsDir := "/app/data/uploads"
+				tenantDir := filepath.Join(uploadsDir, tenantID)
+				os.MkdirAll(tenantDir, 0755)
+				
+				timestamp := time.Now().Format("20060102_150405")
+				fileName := docMsg.GetFileName()
+				if fileName == "" {
+					fileName = fmt.Sprintf("%s_received.pdf", timestamp)
+				} else {
+					fileName = fmt.Sprintf("%s_%s", timestamp, strings.ReplaceAll(fileName, " ", "_"))
+				}
+				filePath := filepath.Join(tenantDir, fileName)
+				
+				if err := os.WriteFile(filePath, data, 0644); err == nil {
+					mediaURL = fmt.Sprintf("/uploads/%s/%s", tenantID, fileName)
+					s.logger.Infof("[%s] Downloaded incoming document: %s", tenantID, mediaURL)
+				}
+			} else {
+				s.logger.Errorf("[%s] Failed to download document: %v", tenantID, err)
+			}
+		}
+	}
+
 	// Store message in database
 	ctx := context.Background()
 	query := `
 		INSERT INTO whatsapp_messages (
 			tenant_id, message_id, chat_jid, sender_jid, 
-			message_type, message_text, is_from_me, is_group, 
+			message_type, message_text, media_url, is_from_me, is_group, 
 			timestamp, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
 		ON CONFLICT (tenant_id, message_id) DO NOTHING
 	`
 	
@@ -247,6 +301,7 @@ func (s *ClientService) handleMessage(tenantID string, evt *events.Message) {
 		customerJID, // Use customer JID as sender for consistent storage
 		messageType,
 		messageText,
+		mediaURL, // Store the local media URL
 		evt.Info.IsFromMe,
 		evt.Info.IsGroup,
 		evt.Info.Timestamp.Unix(),
@@ -278,6 +333,8 @@ func (s *ClientService) handleMessage(tenantID string, evt *events.Message) {
 	resolvedCustomerJID := s.resolveJID(tenantID, customerJID)
 	resolvedChatJID := s.resolveJID(tenantID, normalizedChatJID)
 	
+	s.logger.Infof("[%s] Broadcasting message - type: %s, mediaURL: %s, isFromMe: %v", tenantID, messageType, mediaURL, evt.Info.IsFromMe)
+	
 	// Broadcast new message event via WebSocket
 	hub := websocket.GetHub()
 	hub.BroadcastToTenant(tenantID, websocket.EventNewMessage, map[string]interface{}{
@@ -286,6 +343,7 @@ func (s *ClientService) handleMessage(tenantID string, evt *events.Message) {
 		"chat_jid":     resolvedChatJID,
 		"message_text": messageText,
 		"message_type": messageType,
+		"media_url":    mediaURL, // Include media URL for real-time display
 		"timestamp":    evt.Info.Timestamp.Unix(),
 		"is_from_me":   evt.Info.IsFromMe,
 	})
@@ -666,4 +724,158 @@ type SendMessageResult struct {
 	MessageID string    `json:"message_id"`
 	Timestamp time.Time `json:"timestamp"`
 	Status    string    `json:"status"`
+}
+
+// SendMediaMessage sends a media message (image, document) to a WhatsApp recipient
+func (s *ClientService) SendMediaMessage(ctx context.Context, tenantID string, recipientJID string, mediaData []byte, mediaType string, fileName string, caption string) (string, error) {
+	s.logger.Infof("[%s] SendMediaMessage: starting, recipientJID=%s, type=%s", tenantID, recipientJID, mediaType)
+
+	client, err := s.clientManager.GetClient(tenantID)
+	if err != nil {
+		return "", fmt.Errorf("WhatsApp client not found. Please connect first")
+	}
+
+	if !client.IsConnected() {
+		return "", fmt.Errorf("WhatsApp not connected. Please reconnect")
+	}
+
+	// Parse recipient JID
+	jid, err := types.ParseJID(recipientJID)
+	if err != nil {
+		return "", fmt.Errorf("invalid recipient JID: %w", err)
+	}
+	jid = jid.ToNonAD()
+
+	// Save file locally first for display in UI
+	uploadsDir := "/app/data/uploads"
+	tenantDir := filepath.Join(uploadsDir, tenantID)
+	if err := os.MkdirAll(tenantDir, 0755); err != nil {
+		s.logger.Errorf("Failed to create uploads directory: %v", err)
+	}
+	
+	// Generate unique filename
+	ext := filepath.Ext(fileName)
+	if ext == "" {
+		if mediaType == "image" {
+			ext = ".jpg"
+		} else {
+			ext = ".pdf"
+		}
+	}
+	timestamp := time.Now().Format("20060102_150405")
+	localFileName := fmt.Sprintf("%s_%s%s", timestamp, strings.ReplaceAll(fileName, " ", "_"), "")
+	if !strings.HasSuffix(localFileName, ext) {
+		localFileName = timestamp + "_" + strings.TrimSuffix(strings.ReplaceAll(fileName, " ", "_"), ext) + ext
+	}
+	localFilePath := filepath.Join(tenantDir, localFileName)
+	
+	// Write file to disk
+	if err := os.WriteFile(localFilePath, mediaData, 0644); err != nil {
+		s.logger.Errorf("Failed to save media locally: %v", err)
+	}
+	
+	// Generate the accessible URL
+	localMediaURL := fmt.Sprintf("/uploads/%s/%s", tenantID, localFileName)
+
+	// Upload to WhatsApp
+	var uploaded whatsmeow.UploadResponse
+	var msg *waProto.Message
+
+	switch mediaType {
+	case "image":
+		uploaded, err = client.Upload(ctx, mediaData, whatsmeow.MediaImage)
+		if err != nil {
+			return "", fmt.Errorf("failed to upload image: %w", err)
+		}
+		msg = &waProto.Message{
+			ImageMessage: &waProto.ImageMessage{
+				Caption:       proto.String(caption),
+				URL:           proto.String(uploaded.URL),
+				DirectPath:    proto.String(uploaded.DirectPath),
+				MediaKey:      uploaded.MediaKey,
+				Mimetype:      proto.String("image/jpeg"), // Assuming JPEG for now, should detect
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(mediaData))),
+			},
+		}
+	case "document":
+		uploaded, err = client.Upload(ctx, mediaData, whatsmeow.MediaDocument)
+		if err != nil {
+			return "", fmt.Errorf("failed to upload document: %w", err)
+		}
+		msg = &waProto.Message{
+			DocumentMessage: &waProto.DocumentMessage{
+				Caption:       proto.String(caption),
+				URL:           proto.String(uploaded.URL),
+				DirectPath:    proto.String(uploaded.DirectPath),
+				MediaKey:      uploaded.MediaKey,
+				Mimetype:      proto.String("application/pdf"), // Default to PDF, should detect
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(mediaData))),
+				FileName:      proto.String(fileName),
+			},
+		}
+	default:
+		return "", fmt.Errorf("unsupported media type: %s", mediaType)
+	}
+
+	// Send message
+	resp, err := client.SendMessage(ctx, jid, msg)
+	if err != nil {
+		return "", fmt.Errorf("failed to send media message: %w", err)
+	}
+
+	s.logger.Infof("[%s] Media message sent! ID=%s", tenantID, resp.ID)
+
+	// Store in database with LOCAL URL (not WhatsApp CDN URL)
+	// Use DO UPDATE to overwrite media_url if handleMessage already inserted with CDN URL
+	query := `
+		INSERT INTO whatsapp_messages (
+			tenant_id, message_id, chat_jid, sender_jid, 
+			message_type, message_text, media_url, caption,
+			is_from_me, is_group, timestamp, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+		ON CONFLICT (tenant_id, message_id) DO UPDATE SET media_url = EXCLUDED.media_url
+	`
+
+	senderJID := ""
+	if client.Store != nil && client.Store.ID != nil {
+		senderJID = client.Store.ID.String()
+	}
+
+	_, dbErr := s.db.ExecContext(ctx, query,
+		tenantID,
+		resp.ID,
+		recipientJID,
+		senderJID,
+		mediaType,
+		caption, // Use caption as message text for display
+		localMediaURL, // Use LOCAL URL, not WhatsApp CDN URL
+		caption,
+		true,
+		false,
+		resp.Timestamp.Unix(),
+	)
+
+	if dbErr != nil {
+		s.logger.Errorf("Failed to store sent media message: %v", dbErr)
+	}
+
+	// Broadcast via WebSocket with LOCAL URL
+	hub := websocket.GetHub()
+	hub.BroadcastToTenant(tenantID, websocket.EventNewMessage, map[string]interface{}{
+		"message_id":   resp.ID,
+		"sender_jid":   senderJID,
+		"chat_jid":     recipientJID,
+		"message_text": caption,
+		"message_type": mediaType,
+		"media_url":    localMediaURL, // Use LOCAL URL
+		"caption":      caption,
+		"timestamp":    resp.Timestamp.Unix(),
+		"is_from_me":   true,
+	})
+
+	return resp.ID, nil
 }
