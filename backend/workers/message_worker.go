@@ -246,6 +246,67 @@ func (w *MessageWorker) buildBusinessContext(config *AIConfig) string {
 	return strings.Join(parts, "\n")
 }
 
+// getChatHistory retrieves recent chat messages for context
+func (w *MessageWorker) getChatHistory(ctx context.Context, tenantID, chatJID string) string {
+	query := `
+		SELECT message_text, is_from_me, timestamp
+		FROM whatsapp_messages
+		WHERE tenant_id = $1 AND chat_jid = $2 AND message_text IS NOT NULL AND message_text != ''
+		ORDER BY timestamp DESC
+		LIMIT 10
+	`
+
+	rows, err := w.db.QueryContext(ctx, query, tenantID, chatJID)
+	if err != nil {
+		fmt.Printf("[Worker] Failed to get chat history: %v\n", err)
+		return ""
+	}
+	defer rows.Close()
+
+	type historyMsg struct {
+		Text     string
+		IsFromMe bool
+		Time     int64
+	}
+
+	var messages []historyMsg
+	for rows.Next() {
+		var msg historyMsg
+		if err := rows.Scan(&msg.Text, &msg.IsFromMe, &msg.Time); err != nil {
+			continue
+		}
+		messages = append(messages, msg)
+	}
+
+	if len(messages) == 0 {
+		return ""
+	}
+
+	// Reverse to get oldest first (chronological order)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	// Build chat history string
+	var sb strings.Builder
+	sb.WriteString("RIWAYAT PERCAKAPAN SEBELUMNYA:\n")
+	for _, msg := range messages {
+		role := "Customer"
+		if msg.IsFromMe {
+			role = "Anda"
+		}
+		// Truncate long messages
+		text := msg.Text
+		if len(text) > 200 {
+			text = text[:200] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("%s: %s\n", role, text))
+	}
+
+	fmt.Printf("[Worker] Including %d messages in chat history context\n", len(messages))
+	return sb.String()
+}
+
 // logAIConversation logs AI conversation to database
 func (w *MessageWorker) logAIConversation(ctx context.Context, tenantID string, senderJID string, customerMessage string, response *ai.AutoReplyResponse, action string) {
 	query := `
@@ -360,6 +421,15 @@ Selalu gunakan bahasa yang santun dan profesional.`
 
 	// Build business context
 	businessContext := w.buildBusinessContext(config)
+
+	// Get chat history for context
+	chatHistory := w.getChatHistory(ctx, payload.TenantID, normalizeJID(payload.SenderJID))
+	if chatHistory != "" {
+		if businessContext != "" {
+			businessContext += "\n\n"
+		}
+		businessContext += chatHistory
+	}
 
 	// Generate AI response
 	aiReq := ai.AutoReplyRequest{
