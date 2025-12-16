@@ -36,8 +36,8 @@ func CreateTenant(c echo.Context) error {
 
 	// Create tenant
 	query := `
-		INSERT INTO tenants (user_id, business_name, business_type, business_description, business_phone, business_address)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO tenants (user_id, business_name, business_type, business_description, business_phone, business_address, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -49,6 +49,7 @@ func CreateTenant(c echo.Context) error {
 		req.BusinessDescription,
 		req.BusinessPhone,
 		req.BusinessAddress,
+		true, // is_active
 	).Scan(&tenant.ID, &tenant.CreatedAt, &tenant.UpdatedAt)
 
 	if err != nil {
@@ -78,7 +79,8 @@ func GetMyTenant(c echo.Context) error {
 	}
 
 	var tenant models.Tenant
-	query := `SELECT * FROM tenants WHERE user_id = $1 LIMIT 1`
+	// Check for active tenant first, consistent with getTenantIDFromContext
+	query := `SELECT * FROM tenants WHERE user_id = $1 AND is_active = true LIMIT 1`
 	
 	err := db.DB.QueryRow(query, userID).Scan(
 		&tenant.ID,
@@ -94,9 +96,33 @@ func GetMyTenant(c echo.Context) error {
 	)
 
 	if err == sql.ErrNoRows {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "Tenant not found",
-		})
+		// Tenant not found - try to auto-create one (for existing users who logged in before auto-create was implemented)
+		businessName := "My Business"
+		tenantQuery := `INSERT INTO tenants (user_id, business_name, business_type, business_description, business_phone, business_address, is_active)
+		                VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, user_id, business_name, business_type, business_description, business_phone, business_address, is_active, created_at, updated_at`
+		
+		err = db.DB.QueryRow(tenantQuery, userID, businessName, "UMKM", "", "", "", true).Scan(
+			&tenant.ID,
+			&tenant.UserID,
+			&tenant.BusinessName,
+			&tenant.BusinessType,
+			&tenant.BusinessDescription,
+			&tenant.BusinessPhone,
+			&tenant.BusinessAddress,
+			&tenant.IsActive,
+			&tenant.CreatedAt,
+			&tenant.UpdatedAt,
+		)
+		
+		if err != nil {
+			// Failed to auto-create tenant
+			return c.JSON(http.StatusNotFound, map[string]string{
+				"error": "Tenant not found. Please create a tenant first.",
+			})
+		}
+		
+		// Successfully auto-created tenant
+		return c.JSON(http.StatusOK, tenant)
 	}
 
 	if err != nil {
