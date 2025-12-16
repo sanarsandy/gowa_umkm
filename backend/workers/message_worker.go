@@ -174,14 +174,14 @@ func (w *MessageWorker) getAIConfig(ctx context.Context, tenantID string) (*AICo
 	)
 	
 	if err == sql.ErrNoRows {
-		// Return default config
+		// Return default config with optimized settings for speed
 		return &AIConfig{
 			Enabled:             false,
 			AIProvider:          "gemini",
-			Model:               "gemini-1.5-flash",
+			Model:               "gemini-1.5-flash", // Faster model
 			UseSystemKey:        true,
 			ConfidenceThreshold: 0.80,
-			MaxTokens:           200,
+			MaxTokens:           150, // Reduced for faster response
 		}, nil
 	}
 	if err != nil {
