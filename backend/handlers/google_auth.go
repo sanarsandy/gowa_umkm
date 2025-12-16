@@ -99,6 +99,37 @@ func GoogleAuthCallback(c echo.Context) error {
 		})
 	}
 
+	// Auto-create tenant if it doesn't exist (similar to email registration)
+	// This is mandatory - login will fail if tenant creation fails
+	var existingTenantID string
+	tenantCheckQuery := `SELECT id FROM tenants WHERE user_id = $1 AND is_active = true LIMIT 1`
+	err = db.DB.QueryRow(tenantCheckQuery, user.ID).Scan(&existingTenantID)
+	if err == sql.ErrNoRows {
+		// Tenant doesn't exist, create one (mandatory)
+		businessName := user.FullName + "'s Business"
+		if businessName == "'s Business" {
+			businessName = user.Email + "'s Business"
+		}
+		tenantQuery := `INSERT INTO tenants (user_id, business_name, business_type, business_description, business_phone, business_address, is_active)
+		                VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+		var tenantID string
+		err = db.DB.QueryRow(tenantQuery, user.ID, businessName, "UMKM", "", "", "", true).Scan(&tenantID)
+		if err != nil {
+			// Fail login if tenant creation fails
+			c.Logger().Errorf("Failed to auto-create tenant for Google user %s: %v", user.ID, err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "Gagal membuat tenant. Silakan coba lagi nanti atau hubungi administrator.",
+			})
+		}
+		c.Logger().Infof("Auto-created tenant %s for Google user %s", tenantID, user.ID)
+	} else if err != nil {
+		// Database error while checking tenant - fail login
+		c.Logger().Errorf("Error checking tenant for Google user %s: %v", user.ID, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Terjadi kesalahan pada database. Silakan coba lagi nanti.",
+		})
+	}
+
 	// Generate JWT
 	jwtToken := jwt.New(jwt.SigningMethodHS256)
 	claims := jwtToken.Claims.(jwt.MapClaims)
