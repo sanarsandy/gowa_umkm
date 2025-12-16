@@ -64,7 +64,8 @@ func NewAIService() (*AIService, error) {
 	defaultAPIKey := os.Getenv("GEMINI_API_KEY")
 	defaultModel := os.Getenv("GEMINI_MODEL")
 	if defaultModel == "" {
-		defaultModel = "gemini-2.0-flash"
+		// Use faster model by default
+		defaultModel = "gemini-1.5-flash"
 	}
 
 	var defaultProvider AIProvider
@@ -87,6 +88,10 @@ func NewAIService() (*AIService, error) {
 // GenerateAutoReply generates an AI-powered auto-reply
 func (s *AIService) GenerateAutoReply(ctx context.Context, req AutoReplyRequest) (*AutoReplyResponse, error) {
 	startTime := time.Now()
+	
+	// Add timeout to context (10 seconds max for AI API call)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
 	// Determine which provider to use
 	var provider AIProvider
@@ -151,8 +156,8 @@ func (s *AIService) GenerateAutoReply(ctx context.Context, req AutoReplyRequest)
 	// Build context from knowledge base
 	contextInfo := s.buildContext(req.BusinessContext, req.KnowledgeBase)
 
-	// Generate response
-	aiResp, err := provider.GenerateResponse(ctx, req.SystemPrompt, req.CustomerMessage, contextInfo)
+	// Generate response with timeout context
+	aiResp, err := provider.GenerateResponse(ctxWithTimeout, req.SystemPrompt, req.CustomerMessage, contextInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate AI response: %w", err)
 	}
@@ -222,23 +227,29 @@ func (s *AIService) TestConnection(ctx context.Context, providerName, apiKey, mo
 }
 
 // buildContext builds the context string from business info and knowledge base
+// Optimized to reduce token usage for faster response
 func (s *AIService) buildContext(businessContext string, knowledge []Knowledge) string {
 	var sb strings.Builder
 
 	if businessContext != "" {
+		// Truncate business context if too long (max 500 chars)
+		if len(businessContext) > 500 {
+			businessContext = businessContext[:500] + "..."
+		}
 		sb.WriteString(businessContext)
 		sb.WriteString("\n\n")
 	}
 
 	if len(knowledge) > 0 {
-		sb.WriteString("RELEVANT INFORMATION:\n")
+		sb.WriteString("INFO:\n")
 		for _, k := range knowledge {
-			// Truncate knowledge content to reduce token usage (max 300 chars per entry)
+			// Truncate knowledge content to reduce token usage (max 200 chars per entry for faster processing)
 			content := k.Content
-			if len(content) > 300 {
-				content = content[:300] + "..."
+			if len(content) > 200 {
+				content = content[:200] + "..."
 			}
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", k.Title, content))
+			// Use shorter format: "Title: content" instead of "- Title: content"
+			sb.WriteString(fmt.Sprintf("%s: %s\n", k.Title, content))
 		}
 	}
 
@@ -312,13 +323,11 @@ func buildPrompt(systemPrompt, contextInfo, userMessage string) string {
 		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString("IMPORTANT RULES:\n")
-	sb.WriteString("- Respond in Indonesian language\n")
-	sb.WriteString("- Be helpful, friendly, and professional\n")
-	sb.WriteString("- Keep responses concise (max 200 characters)\n")
-	sb.WriteString("- If you don't know something, say so honestly\n")
-	sb.WriteString("- Use the context provided to answer accurately\n")
-	sb.WriteString("- Do not make up information\n\n")
+	sb.WriteString("RULES:\n")
+	sb.WriteString("- Bahasa Indonesia\n")
+	sb.WriteString("- Ramah, ringkas (max 150 karakter)\n")
+	sb.WriteString("- Jujur jika tidak tahu\n")
+	sb.WriteString("- Gunakan context yang diberikan\n\n")
 
 	sb.WriteString("USER MESSAGE:\n")
 	sb.WriteString(userMessage)

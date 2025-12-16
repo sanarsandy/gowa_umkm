@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
@@ -31,7 +32,8 @@ func NewGeminiProvider(config ProviderConfig) (*GeminiProvider, error) {
 
 	modelName := config.Model
 	if modelName == "" {
-		modelName = "gemini-2.0-flash"
+		// Use faster model by default (gemini-1.5-flash is faster than 2.0-flash)
+		modelName = "gemini-1.5-flash"
 	}
 
 	model := client.GenerativeModel(modelName)
@@ -47,7 +49,8 @@ func NewGeminiProvider(config ProviderConfig) (*GeminiProvider, error) {
 	
 	maxTokens := config.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 500
+		// Reduce default max tokens for faster response (150 is enough for concise replies)
+		maxTokens = 150
 	}
 	model.SetMaxOutputTokens(int32(maxTokens))
 
@@ -75,9 +78,13 @@ func (g *GeminiProvider) GetModelName() string {
 }
 
 func (g *GeminiProvider) GenerateResponse(ctx context.Context, systemPrompt, userMessage, contextInfo string) (*AIResponse, error) {
+	// Add timeout to context (8 seconds for Gemini)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
 	fullPrompt := buildPrompt(systemPrompt, contextInfo, userMessage)
 
-	resp, err := g.model.GenerateContent(ctx, genai.Text(fullPrompt))
+	resp, err := g.model.GenerateContent(ctxWithTimeout, genai.Text(fullPrompt))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate content: %w", err)
 	}

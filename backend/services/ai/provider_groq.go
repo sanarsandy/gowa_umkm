@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // GroqProvider implements AIProvider for Groq
@@ -32,7 +33,7 @@ func NewGroqProvider(config ProviderConfig) (*GroqProvider, error) {
 
 	maxTokens := config.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 500
+		maxTokens = 150 // Reduced default for faster response
 	}
 
 	temp := config.Temperature
@@ -40,12 +41,22 @@ func NewGroqProvider(config ProviderConfig) (*GroqProvider, error) {
 		temp = 0.7
 	}
 
+	// Create HTTP client with timeout for faster failure detection
+	httpClient := &http.Client{
+		Timeout: 8 * time.Second, // Groq is fast, 8 second timeout should be enough
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     30 * time.Second,
+		},
+	}
+
 	return &GroqProvider{
 		apiKey:      config.APIKey,
 		modelName:   modelName,
 		maxTokens:   maxTokens,
 		temperature: temp,
-		httpClient:  &http.Client{},
+		httpClient:  httpClient,
 	}, nil
 }
 

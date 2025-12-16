@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // AnthropicProvider implements AIProvider for Anthropic Claude
@@ -62,7 +63,7 @@ func NewAnthropicProvider(config ProviderConfig) (*AnthropicProvider, error) {
 
 	maxTokens := config.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 500
+		maxTokens = 150 // Reduced default for faster response
 	}
 
 	temp := config.Temperature
@@ -70,12 +71,22 @@ func NewAnthropicProvider(config ProviderConfig) (*AnthropicProvider, error) {
 		temp = 0.7
 	}
 
+	// Create HTTP client with timeout for faster failure detection
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second, // 10 second timeout for API calls
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     30 * time.Second,
+		},
+	}
+
 	return &AnthropicProvider{
 		apiKey:      config.APIKey,
 		modelName:   modelName,
 		maxTokens:   maxTokens,
 		temperature: temp,
-		httpClient:  &http.Client{},
+		httpClient:  httpClient,
 	}, nil
 }
 

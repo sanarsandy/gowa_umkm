@@ -203,11 +203,11 @@ func (h *AIHandler) GetAIConfig(c echo.Context) error {
 			TenantID:            tenantID,
 			Enabled:             false,
 			AIProvider:          "gemini",
-			Model:               "gemini-2.0-flash",
+			Model:               "gemini-1.5-flash", // Faster model by default
 			APIKeySet:           false,
 			UseSystemKey:        true,
 			ConfidenceThreshold: 0.80,
-			MaxTokens:           200,
+			MaxTokens:           150, // Reduced for faster response
 			Language:            "id",
 			EscalateLowConf:     true,
 			EscalateComplaint:   true,
@@ -265,7 +265,7 @@ func (h *AIHandler) UpdateAIConfig(c echo.Context) error {
 		req.ConfidenceThreshold = 0.80
 	}
 	if req.MaxTokens < 50 || req.MaxTokens > 2000 {
-		req.MaxTokens = 200
+		req.MaxTokens = 150 // Reduced default for faster response
 	}
 
 	// Encrypt API key if provided
@@ -416,7 +416,7 @@ func getAIConfigWithKey(tenantID string) (*AIConfigDB, string, error) {
 			tenant_id,
 			COALESCE(enabled, false) as enabled,
 			COALESCE(ai_provider, 'gemini') as ai_provider,
-			COALESCE(model, 'gemini-2.0-flash') as model,
+			COALESCE(model, 'gemini-1.5-flash') as model,
 			COALESCE(api_key_set, false) as api_key_set,
 			COALESCE(use_system_key, true) as use_system_key,
 			COALESCE(confidence_threshold, 0.80) as confidence_threshold,
@@ -458,7 +458,7 @@ func getAIConfigWithKey(tenantID string) (*AIConfigDB, string, error) {
 		return &AIConfigDB{
 			TenantID:   tenantID,
 			AIProvider: "gemini",
-			Model:      "gemini-2.0-flash",
+			Model:      "gemini-1.5-flash", // Faster model by default
 		}, "", err
 	}
 
