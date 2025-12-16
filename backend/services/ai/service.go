@@ -233,7 +233,12 @@ func (s *AIService) buildContext(businessContext string, knowledge []Knowledge) 
 	if len(knowledge) > 0 {
 		sb.WriteString("RELEVANT INFORMATION:\n")
 		for _, k := range knowledge {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", k.Title, k.Content))
+			// Truncate knowledge content to reduce token usage (max 300 chars per entry)
+			content := k.Content
+			if len(content) > 300 {
+				content = content[:300] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", k.Title, content))
 		}
 	}
 
@@ -310,7 +315,7 @@ func buildPrompt(systemPrompt, contextInfo, userMessage string) string {
 	sb.WriteString("IMPORTANT RULES:\n")
 	sb.WriteString("- Respond in Indonesian language\n")
 	sb.WriteString("- Be helpful, friendly, and professional\n")
-	sb.WriteString("- Keep responses concise (max 300 characters)\n")
+	sb.WriteString("- Keep responses concise (max 200 characters)\n")
 	sb.WriteString("- If you don't know something, say so honestly\n")
 	sb.WriteString("- Use the context provided to answer accurately\n")
 	sb.WriteString("- Do not make up information\n\n")

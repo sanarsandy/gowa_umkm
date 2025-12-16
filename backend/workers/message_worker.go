@@ -67,17 +67,27 @@ func (w *MessageWorker) Stop() {
 }
 
 // processAIMessages processes AI queue messages
+// Use multiple goroutines for parallel processing to improve response time
 func (w *MessageWorker) processAIMessages(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-w.stopChan:
-			return
-		default:
-			w.processAIMessage(ctx)
-		}
+	// Use 3 parallel workers for faster message processing
+	workerCount := 3
+	for i := 0; i < workerCount; i++ {
+		go func(workerID int) {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-w.stopChan:
+					return
+				default:
+					w.processAIMessage(ctx)
+				}
+			}
+		}(i)
 	}
+	
+	// Wait for context cancellation
+	<-ctx.Done()
 }
 
 // processBroadcastMessages processes broadcast queue messages
@@ -202,7 +212,7 @@ func (w *MessageWorker) getKnowledgeBase(ctx context.Context, tenantID string) (
 		FROM knowledge_base
 		WHERE tenant_id = $1 AND is_active = true
 		ORDER BY priority DESC
-		LIMIT 10
+		LIMIT 5
 	`
 	
 	rows, err := w.db.QueryContext(ctx, query, tenantID)
@@ -255,7 +265,7 @@ func (w *MessageWorker) getChatHistory(ctx context.Context, tenantID, chatJID st
 		FROM whatsapp_messages
 		WHERE tenant_id = $1 AND chat_jid = $2 AND message_text IS NOT NULL AND message_text != ''
 		ORDER BY timestamp DESC
-		LIMIT 10
+		LIMIT 5
 	`
 
 	rows, err := w.db.QueryContext(ctx, query, tenantID, chatJID)
@@ -297,10 +307,10 @@ func (w *MessageWorker) getChatHistory(ctx context.Context, tenantID, chatJID st
 		if msg.IsFromMe {
 			role = "Anda"
 		}
-		// Truncate long messages
+		// Truncate long messages to reduce token usage (150 chars is enough for context)
 		text := msg.Text
-		if len(text) > 200 {
-			text = text[:200] + "..."
+		if len(text) > 150 {
+			text = text[:150] + "..."
 		}
 		sb.WriteString(fmt.Sprintf("%s: %s\n", role, text))
 	}
@@ -368,8 +378,8 @@ func (w *MessageWorker) updateAIUsageStats(ctx context.Context, tenantID string,
 
 // processAIMessage processes a single message from the AI queue
 func (w *MessageWorker) processAIMessage(ctx context.Context) {
-	// Pop message from AI queue with 5 second timeout
-	payload, err := w.redisClient.PopFromAIQueue(ctx, 5*time.Second)
+	// Pop message from AI queue with 1 second timeout for faster processing
+	payload, err := w.redisClient.PopFromAIQueue(ctx, 1*time.Second)
 	if err != nil {
 		// Timeout or error - just continue
 		return
@@ -434,14 +444,31 @@ func (w *MessageWorker) processAIMessage(ctx context.Context) {
 		return
 	}
 
-	// Load knowledge base
-	knowledgeBase, err := w.getKnowledgeBase(ctx, payload.TenantID)
-	if err != nil {
-		fmt.Printf("[Worker] Failed to load knowledge base: %v\n", err)
-		knowledgeBase = []ai.Knowledge{}
+	// Parallel loading: Load knowledge base and chat history concurrently for faster processing
+	type loadResult struct {
+		knowledge   []ai.Knowledge
+		chatHistory string
+		err         error
 	}
-
-	// Build system prompt
+	
+	loadChan := make(chan loadResult, 1)
+	go func() {
+		knowledgeBase, err := w.getKnowledgeBase(ctx, payload.TenantID)
+		if err != nil {
+			fmt.Printf("[Worker] Failed to load knowledge base: %v\n", err)
+			knowledgeBase = []ai.Knowledge{}
+		}
+		
+		// Get chat history for context (only last 5 messages for faster processing)
+		chatHistory := w.getChatHistory(ctx, payload.TenantID, normalizeJID(payload.SenderJID))
+		
+		loadChan <- loadResult{
+			knowledge:   knowledgeBase,
+			chatHistory: chatHistory,
+		}
+	}()
+	
+	// Build system prompt while loading data
 	systemPrompt := config.SystemPrompt
 	if systemPrompt == "" {
 		systemPrompt = `Kamu adalah asisten toko online yang ramah dan membantu.
@@ -452,9 +479,13 @@ Selalu gunakan bahasa yang santun dan profesional.`
 
 	// Build business context
 	businessContext := w.buildBusinessContext(config)
-
-	// Get chat history for context
-	chatHistory := w.getChatHistory(ctx, payload.TenantID, normalizeJID(payload.SenderJID))
+	
+	// Wait for parallel loading to complete
+	loadRes := <-loadChan
+	knowledgeBase := loadRes.knowledge
+	chatHistory := loadRes.chatHistory
+	
+	// Append chat history to business context if available
 	if chatHistory != "" {
 		if businessContext != "" {
 			businessContext += "\n\n"
