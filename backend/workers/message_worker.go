@@ -391,15 +391,44 @@ func (w *MessageWorker) processAIMessage(ctx context.Context) {
 
 	// Check if AI auto-reply is enabled
 	if !config.Enabled {
-		fmt.Printf("[Worker] AI auto-reply disabled for tenant %s\n", payload.TenantID)
+		fmt.Printf("[Worker] AI auto-reply disabled for tenant %s (enabled=false in config)\n", payload.TenantID)
 		w.markMessageProcessed(ctx, payload, false)
 		w.updateCustomerInsight(ctx, payload)
 		return
 	}
 
+	fmt.Printf("[Worker] AI auto-reply enabled for tenant %s, processing message...\n", payload.TenantID)
+
 	// Check if AI service is available
 	if w.aiService == nil {
-		fmt.Printf("[Worker] AI service not available\n")
+		fmt.Printf("[Worker] AI service not available - service is nil\n")
+		w.markMessageProcessed(ctx, payload, false)
+		w.updateCustomerInsight(ctx, payload)
+		return
+	}
+
+	// Check if API key is available (system or user)
+	hasAPIKey := false
+	if config.UseSystemKey {
+		// Check if system has default provider
+		if w.aiService.HasDefaultProvider() {
+			hasAPIKey = true
+			fmt.Printf("[Worker] Using system API key for tenant %s\n", payload.TenantID)
+		} else {
+			fmt.Printf("[Worker] System API key not configured (GEMINI_API_KEY not set)\n")
+		}
+	} else {
+		// Check if user has API key
+		if config.UserAPIKey != "" {
+			hasAPIKey = true
+			fmt.Printf("[Worker] Using user API key for tenant %s\n", payload.TenantID)
+		} else {
+			fmt.Printf("[Worker] User API key not set for tenant %s\n", payload.TenantID)
+		}
+	}
+
+	if !hasAPIKey {
+		fmt.Printf("[Worker] No API key available for tenant %s. Please configure API key in AI settings.\n", payload.TenantID)
 		w.markMessageProcessed(ctx, payload, false)
 		w.updateCustomerInsight(ctx, payload)
 		return
@@ -447,9 +476,14 @@ Selalu gunakan bahasa yang santun dan profesional.`
 		MaxTokens:       config.MaxTokens,
 	}
 
+	fmt.Printf("[Worker] Generating AI response for tenant %s, provider=%s, model=%s, use_system_key=%v\n",
+		payload.TenantID, config.AIProvider, config.Model, config.UseSystemKey)
+	
 	response, err := w.aiService.GenerateAutoReply(ctx, aiReq)
 	if err != nil {
-		fmt.Printf("[Worker] Failed to generate AI response: %v\n", err)
+		fmt.Printf("[Worker] Failed to generate AI response for tenant %s: %v\n", payload.TenantID, err)
+		fmt.Printf("[Worker] Error details - Provider: %s, Model: %s, UseSystemKey: %v, HasUserKey: %v\n",
+			config.AIProvider, config.Model, config.UseSystemKey, config.UserAPIKey != "")
 		w.markMessageProcessed(ctx, payload, false)
 		w.updateCustomerInsight(ctx, payload)
 		return

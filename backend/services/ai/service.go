@@ -92,6 +92,7 @@ func (s *AIService) GenerateAutoReply(ctx context.Context, req AutoReplyRequest)
 	var provider AIProvider
 	var err error
 
+	// If user provided API key, use it (even if use_system_key is true, if APIKey is provided, use it)
 	if req.APIKey != "" && req.Provider != "" {
 		// Use user's custom API key
 		provider, err = CreateProvider(ProviderConfig{
@@ -102,14 +103,49 @@ func (s *AIService) GenerateAutoReply(ctx context.Context, req AutoReplyRequest)
 			Temperature: 0.7,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create provider: %w", err)
+			return nil, fmt.Errorf("failed to create provider with user API key: %w", err)
 		}
 		defer provider.Close()
 	} else if s.defaultProvider != nil {
-		// Use system default provider
-		provider = s.defaultProvider
+		// Use system default provider (when use_system_key = true and no user API key)
+		// If provider is specified and doesn't match, we can still use default but log warning
+		// Or we could try to create provider with system key for requested provider
+		if req.Provider != "" && req.Provider != s.defaultProvider.GetProviderName() {
+			// Try to get system API key for requested provider
+			envKey := fmt.Sprintf("%s_API_KEY", strings.ToUpper(req.Provider))
+			systemAPIKey := os.Getenv(envKey)
+			if systemAPIKey != "" {
+				// Create provider with system API key for requested provider
+				provider, err = CreateProvider(ProviderConfig{
+					Provider:    req.Provider,
+					APIKey:      systemAPIKey,
+					Model:       req.Model,
+					MaxTokens:   req.MaxTokens,
+					Temperature: 0.7,
+				})
+				if err != nil {
+					// Fallback to default provider
+					fmt.Printf("[AI] Warning: Failed to create %s provider, using default: %v\n", req.Provider, err)
+					provider = s.defaultProvider
+				} else {
+					defer provider.Close()
+				}
+			} else {
+				// No system key for requested provider, use default
+				fmt.Printf("[AI] Warning: Provider %s requested but no %s_API_KEY found, using default provider %s\n", 
+					req.Provider, envKey, s.defaultProvider.GetProviderName())
+				provider = s.defaultProvider
+			}
+		} else {
+			provider = s.defaultProvider
+		}
 	} else {
-		return nil, fmt.Errorf("no AI provider available. Please configure an API key.")
+		// No API key available
+		if req.Provider != "" {
+			return nil, fmt.Errorf("no API key available for provider %s. Please configure API key in AI settings or set %s_API_KEY environment variable", 
+				req.Provider, strings.ToUpper(req.Provider))
+		}
+		return nil, fmt.Errorf("no AI provider available. Please configure an API key (GEMINI_API_KEY environment variable or user API key in settings)")
 	}
 
 	// Build context from knowledge base
