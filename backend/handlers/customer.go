@@ -62,8 +62,14 @@ type CustomerDetailResponse struct {
 func GetCustomers(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Tenant not found",
+		// Tenant not found - return empty list instead of error
+		// User is authenticated but hasn't created a tenant yet
+		return c.JSON(http.StatusOK, CustomerListResponse{
+			Customers:  []Customer{},
+			Total:      0,
+			Page:       1,
+			Limit:      20,
+			TotalPages: 0,
 		})
 	}
 
@@ -389,8 +395,16 @@ func UpdateCustomer(c echo.Context) error {
 func GetCustomerStats(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Tenant not found",
+		// Tenant not found - return empty stats instead of error
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"total":         0,
+			"new":           0,
+			"hot_leads":     0,
+			"warm_leads":    0,
+			"cold_leads":    0,
+			"customers":     0,
+			"complaints":    0,
+			"need_follow_up": 0,
 		})
 	}
 

@@ -51,7 +51,12 @@ type BroadcastRecipient struct {
 func GetBroadcasts(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		// Tenant not found - return empty list instead of 401
+		// User is authenticated but hasn't created a tenant yet
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"broadcasts": []Broadcast{},
+			"total":      0,
+		})
 	}
 
 	status := c.QueryParam("status")
@@ -100,7 +105,7 @@ func GetBroadcasts(c echo.Context) error {
 func GetBroadcast(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	broadcastID := c.Param("id")
@@ -144,7 +149,7 @@ func GetBroadcast(c echo.Context) error {
 func CreateBroadcast(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	var req struct {
@@ -226,7 +231,7 @@ func CreateBroadcast(c echo.Context) error {
 func SendBroadcast(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	broadcastID := c.Param("id")
@@ -338,7 +343,7 @@ func personalizeMessage(template, customerName string) string {
 func CancelBroadcast(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	broadcastID := c.Param("id")
@@ -362,7 +367,7 @@ func CancelBroadcast(c echo.Context) error {
 func DeleteBroadcast(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	broadcastID := c.Param("id")
@@ -386,7 +391,13 @@ func DeleteBroadcast(c echo.Context) error {
 func GetBroadcastStats(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		// Tenant not found - return empty stats instead of 401
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"total_broadcasts":   0,
+			"total_messages_sent": 0,
+			"total_delivered":    0,
+			"total_failed":       0,
+		})
 	}
 
 	var stats struct {

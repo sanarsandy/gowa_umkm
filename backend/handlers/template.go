@@ -28,7 +28,12 @@ type Template struct {
 func GetTemplates(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		// Tenant not found - return empty list instead of 401
+		// User is authenticated but hasn't created a tenant yet
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"templates": []Template{},
+			"total":     0,
+		})
 	}
 
 	category := c.QueryParam("category")
@@ -73,7 +78,7 @@ func GetTemplates(c echo.Context) error {
 func CreateTemplate(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	var req struct {
@@ -119,7 +124,7 @@ func CreateTemplate(c echo.Context) error {
 func UpdateTemplate(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	templateID := c.Param("id")
@@ -185,7 +190,7 @@ func UpdateTemplate(c echo.Context) error {
 func DeleteTemplate(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	templateID := c.Param("id")
@@ -208,7 +213,7 @@ func DeleteTemplate(c echo.Context) error {
 func IncrementTemplateUsage(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+		return echo.NewHTTPError(http.StatusBadRequest, "Tenant not found. Please create a tenant first.")
 	}
 
 	templateID := c.Param("id")

@@ -47,9 +47,9 @@ type RecentCustomer struct {
 func GetDashboardStats(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Tenant not found",
-		})
+		// Tenant not found - return empty stats instead of error
+		// User is authenticated but hasn't created a tenant yet
+		return c.JSON(http.StatusOK, DashboardStats{})
 	}
 
 	stats := DashboardStats{}
@@ -138,9 +138,8 @@ func GetDashboardStats(c echo.Context) error {
 func GetRecentMessages(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Tenant not found",
-		})
+		// Tenant not found - return empty list instead of error
+		return c.JSON(http.StatusOK, []RecentMessage{})
 	}
 
 	// Get limit from query param, default to 10
@@ -198,9 +197,8 @@ func GetRecentMessages(c echo.Context) error {
 func GetRecentCustomers(c echo.Context) error {
 	tenantID := getTenantIDFromContext(c)
 	if tenantID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Tenant not found",
-		})
+		// Tenant not found - return empty list instead of error
+		return c.JSON(http.StatusOK, []RecentCustomer{})
 	}
 
 	// Get limit from query param, default to 10
